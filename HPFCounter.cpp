@@ -4,8 +4,7 @@
 //
 // Marlin Server: Internet server/client
 // 
-// Copyright (c) 2015-2018 ir. W.E. Huisman
-// All rights reserved
+// Copyright (c) 2015-2020 ir. W.E. Huisman
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files(the "Software"), to deal
@@ -115,7 +114,7 @@ HPFCounter::Stop()
 //   TRACE ("- slice lo : %x\n",m_userTimeSlice.dwLowDateTime);
 }
 
-// Reset the total time, requery the start
+// Reset the total time, re-query the start
 void
 HPFCounter::Reset()
 {
@@ -132,7 +131,7 @@ HPFCounter::Reset()
   m_userTimeSlice  .dwLowDateTime  = 0;
 }
 
-// Get time in miliseconds
+// Get time in milliseconds
 double 
 HPFCounter::GetCounter()
 {

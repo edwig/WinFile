@@ -8,6 +8,7 @@
 #include <string>
 #include <conio.h>
 #include <time.h>
+#include <shlobj.h>
 
 using std::string;
 using std::ifstream;
@@ -415,6 +416,13 @@ void TestGetFiletimes()
   file.DeleteFile();
 }
 
+void TestSpecialFolder()
+{
+  WinFile file;
+  file.SetFilenameInFolder(CSIDL_MYMUSIC,"MyTestFile.tmp");
+  file.Create();
+  std::cout << "Desktop file: " << file.GetFilename() << std::endl;
+}
 
 //////////////////////////////////////////////////////////////////////////
 //
@@ -427,6 +435,8 @@ int main()
   std::cout << "Hello World, we are testing WinFile\n";
   std::cout << "===================================\n";
 
+  CoInitialize(nullptr);
+
   // Basic string write/re-read test
   TestReadingWriting();
   // Now do a performance test
@@ -437,10 +447,14 @@ int main()
   TestTemporaryFile();
   // Testing filetime function
   TestGetFiletimes();
+  // Testing special folders
+  TestSpecialFolder();
 
   // Wait for user approval
   std::cout << std::endl;
   std::cout << "Ready testing: ";
   _getch();
   std::cout << "OK" << std::endl;
+
+  CoUninitialize();
 }

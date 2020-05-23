@@ -4,8 +4,7 @@
 //
 // Marlin Server: Internet server/client
 // 
-// Copyright (c) 2015-2018 ir. W.E. Huisman
-// All rights reserved
+// Copyright (c) 2015-2020 ir. W.E. Huisman
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files(the "Software"), to deal
@@ -46,7 +45,7 @@ public:
   void      Stop();
   // Reset the timer
   void      Reset();
-  // Get time in miliseconds
+  // Get time in milliseconds
   double    GetCounter();
   // Query a stopped or running timer
   double    QueryCounter();

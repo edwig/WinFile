@@ -1,14 +1,34 @@
 //////////////////////////////////////////////////////////////////////////
 //
-// WinFile
+// File: WinFile.cpp
 //
-// Everything :-) you can do with a Microsoft MS-Windows file
-// Copyright (c) 2020 ir. W.E. Huisman
+// Everything :-) you can do with a Microsoft MS-Windows file (and faster!)
+// Author: W.E. Huisman
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files(the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and / or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions :
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+// THE SOFTWARE.
 //
 #include "WinFile.h"
 #include <iostream>
 #include <fileapi.h>
 #include <handleapi.h>
+#include <shlwapi.h>
+#include <shlobj.h>
 #include <winnt.h>
 #include <io.h>
 
@@ -44,7 +64,7 @@ WinFile::WinFile()
 
 // CTOR from a filename
 WinFile::WinFile(string p_filename)
-       :m_filename(p_filename)
+        :m_filename(p_filename)
 {
 }
 
@@ -70,7 +90,7 @@ WinFile::~WinFile()
 //////////////////////////////////////////////////////////////////////////
 
 bool
-WinFile::Open(DWORD p_flags,FAttributes p_attribs /*= FAttributes::attrib_none*/)
+WinFile::Open(DWORD p_flags /*= winfile_read*/,FAttributes p_attribs /*= FAttributes::attrib_none*/)
 {
   bool result = false;
   bool append = false;
@@ -249,7 +269,7 @@ WinFile::Create(FAttributes p_attribs /*=FAttributes::attrib_normal*/)
   return false;
 }
 
-// Recursivly crete the desired directory
+// Recursively create the desired directory
 bool
 WinFile::CreateDirectory()
 {
@@ -1315,6 +1335,74 @@ WinFile::SetFilename(string p_filename)
     return true;
   }
   return false;
+}
+
+// Get a filename in a 'special' Windows folder
+// p_folder parameter is one of the many CSIDL_* folder names
+bool
+WinFile::SetFilenameInFolder(int p_folder,string p_filename)
+{
+  // Check if file was already opened
+  if(m_file)
+  {
+    return false;
+  }
+
+  // Make sure we only get a folder (and not creating one)
+  p_folder = p_folder & 0xFF;
+
+  // Local variables
+  IMalloc*      pShellMalloc = nullptr;   // A pointer to the shell's IMalloc interface
+  IShellFolder* psfParent    = nullptr;   // A pointer to the parent folder object's IShellFolder interface.
+  LPITEMIDLIST  pidlItem     = nullptr;   // The item's PIDL.
+  LPITEMIDLIST  pidlRelative = nullptr;   // The item's PIDL relative to the parent folder.
+  CHAR          special[MAX_PATH];        // The path for Favorites.
+  STRRET        strings;                  // The structure for strings returned from IShellFolder.
+  bool          result = false;           // Result of the directory search
+
+  special[0] = 0;
+  HRESULT hres = SHGetMalloc(&pShellMalloc);
+  if (FAILED(hres))
+  {
+    return result;
+  }
+  hres = SHGetSpecialFolderLocation(NULL,p_folder,&pidlItem);
+  if (SUCCEEDED(hres))
+  {
+    hres = SHBindToParent(pidlItem,IID_IShellFolder,(void**)&psfParent,(LPCITEMIDLIST*)&pidlRelative);
+    if (SUCCEEDED(hres))
+    {
+      // Retrieve the path
+      memset(&strings, 0, sizeof(strings));
+      hres = psfParent->GetDisplayNameOf(pidlRelative,SHGDN_NORMAL | SHGDN_FORPARSING,&strings);
+      if (SUCCEEDED(hres))
+      {
+        if(StrRetToBuf(&strings,pidlItem,special,ARRAYSIZE(special)) != S_OK)
+        {
+          special[0] = 0;
+          m_error = ERROR_FILE_NOT_FOUND;
+        }
+        else
+        {
+          result = true;
+        }
+      }
+      else
+      {
+        m_error = ERROR_FILE_NOT_FOUND;
+      }
+      psfParent->Release();
+    }
+    // Clean up allocated memory
+    if (pidlItem)
+    {
+      pShellMalloc->Free(pidlItem);
+    }
+  }
+  pShellMalloc->Release();
+
+  m_filename = special + std::string("\\") + p_filename;
+  return result;
 }
 
 // Set the file handle, but only if the file was not (yet) opened
