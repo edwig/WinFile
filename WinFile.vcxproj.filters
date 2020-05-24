@@ -37,5 +37,8 @@
     <None Include="Readme.md">
       <Filter>Resource Files</Filter>
     </None>
+    <None Include="WinFile.docx">
+      <Filter>Resource Files</Filter>
+    </None>
   </ItemGroup>
 </Project>

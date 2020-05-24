@@ -210,7 +210,7 @@ public:
 
   // SETTERS
   bool      SetFilename(string p_filename);
-  bool      SetFilenameInFolder(int p_folder,string p_filename);
+  bool      SetFilenameInFolder(int p_folder,string p_filename);  // Use CSIDL_* names !
   bool      SetFileHandle(HANDLE p_handle);
   bool      SetFileAttribute(FAttributes p_attribute,bool p_set);
   bool      SetHidden(bool p_hidden);

@@ -8,3 +8,5 @@ Some of these are considderably faster than the POSIX or ifstream counterparts.
 *See the Main.cpp file for a bunch of test functions*
 
 *See the WinFile.h file for the complete interface*
+
+*See the Winfile.docx document for a description*
