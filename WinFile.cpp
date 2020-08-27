@@ -30,6 +30,7 @@
 #include <shlwapi.h>
 #include <shlobj.h>
 #include <winnt.h>
+#include <AclAPI.h>
 #include <io.h>
 
 #ifdef _DEBUG
@@ -633,6 +634,74 @@ WinFile::OpenAsSharedMemmory(string   p_name
     m_file = NULL;
   }
   return m_sharedMemory;
+}
+
+// Grant full access on file or directory
+bool
+WinFile::GrantFullAccess()
+{
+  // Check if we have a filename to work on
+  if(m_filename.empty())
+  {
+    return false;
+  }
+
+  bool result      = false;
+  PSID SIDEveryone = nullptr;
+  PACL acl         = nullptr;
+  SID_IDENTIFIER_AUTHORITY SIDAuthWorld = SECURITY_WORLD_SID_AUTHORITY;
+  EXPLICIT_ACCESS ea;
+
+  __try 
+  {
+    // Create a SID for the Everyone group.
+    if(AllocateAndInitializeSid(&SIDAuthWorld,1,SECURITY_WORLD_RID
+                               ,0,0,0,0,0,0,0
+                               ,&SIDEveryone) == 0)
+    {
+      // AllocateAndInitializeSid (Everyone) failed
+      __leave;
+    }
+    // Set full access for Everyone.
+    ZeroMemory(&ea,sizeof(EXPLICIT_ACCESS));
+    ea.grfAccessPermissions = MAXIMUM_ALLOWED;
+    ea.grfAccessMode        = SET_ACCESS;
+    ea.grfInheritance       = SUB_CONTAINERS_AND_OBJECTS_INHERIT;
+    ea.Trustee.TrusteeForm  = TRUSTEE_IS_SID;
+    ea.Trustee.TrusteeType  = TRUSTEE_IS_WELL_KNOWN_GROUP;
+    ea.Trustee.ptstrName    = (LPTSTR)SIDEveryone;
+
+    if(ERROR_SUCCESS != SetEntriesInAcl(1,&ea,nullptr,&acl))
+    {
+      // SetEntriesInAcl failed
+      __leave;
+    }
+    // Try to modify the object's DACL.
+    if(ERROR_SUCCESS != SetNamedSecurityInfo((LPSTR)m_filename.c_str()     // name of the object
+                                             ,SE_FILE_OBJECT               // type of object: file or directory
+                                             ,DACL_SECURITY_INFORMATION    // change only the object's DACL
+                                             ,nullptr,nullptr              // do not change owner or group
+                                             ,acl                          // DACL specified
+                                             ,nullptr))                    // do not change SACL
+    {
+      // SetNamedSecurityInfo failed to change the DACL Maximum Allowed Access
+      __leave;
+    }
+    // Full access granted!
+    result = true;
+  }
+  __finally 
+  {
+    if(SIDEveryone)
+    {
+      FreeSid(SIDEveryone);
+    }
+    if(acl)
+    {
+      LocalFree(acl);
+    }
+  }
+  return result;
 }
 
 // BEWARE! Only use after a copy constructor or an assignment
@@ -2009,13 +2078,13 @@ WinFile::GetIsDirectory()
 
 bool
 WinFile::SetFilenameByDialog(HWND   p_parent      // Parent window (if any)
-                           ,bool   p_open        // true = Open/New, false = SaveAs
-                           ,string p_title       // Title of the dialog
-                           ,string p_defext      // Default extension
-                           ,string p_filename    // Default first file
-                           ,int    p_flags       // Default flags
-                           ,string p_filter      // Filter for extensions
-                           ,string p_direct)     // Directory to start in
+                            ,bool   p_open        // true = Open/New, false = SaveAs
+                            ,string p_title       // Title of the dialog
+                            ,string p_defext      // Default extension
+                            ,string p_filename    // Default first file
+                            ,int    p_flags       // Default flags
+                            ,string p_filter      // Filter for extensions
+                            ,string p_direct)     // Directory to start in
 {
   // Reset error
   m_error = 0;
@@ -2297,7 +2366,7 @@ WinFile::PageBuffer()
 {
   if(m_pageBuffer == nullptr)
   {
-    m_pageBuffer  = (uchar*) malloc(PAGESIZE + 1);
+    m_pageBuffer  = new uchar[(size_t)PAGESIZE + (size_t)1];
     m_pagePointer = m_pageBuffer;
     m_pageTop     = m_pageBuffer;  // Buffer is empty!
     m_pageBuffer[PAGESIZE] = 0;
@@ -2311,7 +2380,7 @@ WinFile::PageBufferFree()
 {
   if(m_pageBuffer)
   {
-    free(m_pageBuffer);
+    delete [] m_pageBuffer;
     m_pageBuffer = nullptr;
     m_pageTop    = nullptr;
   }

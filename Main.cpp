@@ -9,6 +9,7 @@
 #include <conio.h>
 #include <time.h>
 #include <shlobj.h>
+#include <atlstr.h>
 
 using std::string;
 using std::ifstream;
@@ -193,6 +194,17 @@ void TestPerformance()
     std::cout << "ALARM1: Read different file content!" << std::endl;
   }
 
+  measure.Reset();
+  measure.Start();
+  CString secondfile2(ReadFILE(filename).c_str());
+  result2 = measure.GetCounter();
+  std::cout << "Reading <FILE>         : " << result2 << std::endl;
+  std::cout << "Size of file 2 in ATL  : " << secondfile2.GetLength() << std::endl;
+
+  if (strcmp(firstfile.c_str(), secondfile.c_str()))
+  {
+    std::cout << "ALARM1: Read different file content!" << std::endl;
+  }
 
   // Reading strings in our WinFile format
   measure.Reset();
@@ -435,7 +447,7 @@ int main()
   std::cout << "Hello World, we are testing WinFile\n";
   std::cout << "===================================\n";
 
-  CoInitialize(nullptr);
+  HRESULT hr = CoInitialize(nullptr);
 
   // Basic string write/re-read test
   TestReadingWriting();
@@ -453,7 +465,7 @@ int main()
   // Wait for user approval
   std::cout << std::endl;
   std::cout << "Ready testing: ";
-  _getch();
+  int throwaway = _getch();
   std::cout << "OK" << std::endl;
 
   CoUninitialize();

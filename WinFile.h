@@ -188,6 +188,7 @@ public:
   bool      CopyFile(string p_destination,FCopy p_how = winfile_copy);
   bool      MoveFile(string p_destination,FMove p_how = winfile_move);
   bool      CreateTempFileName(string p_pattern, string p_extension = "");
+  bool      GrantFullAccess();
   void      ForgetFile(); // BEWARE!
 
   // OPERATIONS TO READ AND WRITE CONTENT
