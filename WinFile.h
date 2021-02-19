@@ -222,6 +222,9 @@ public:
   bool      SetFileTimeCreated (FILETIME p_created);
   bool      SetFileTimeModified(FILETIME p_modified);
   bool      SetFileTimeAccessed(FILETIME p_accessed);
+  bool      SetFileTimeCreated (SYSTEMTIME& p_created);
+  bool      SetFileTimeModified(SYSTEMTIME& p_modified);
+  bool      SetFileTimeAccessed(SYSTEMTIME& p_accessed);
 
   // GETTERS
   string    GetFilename();
@@ -240,6 +243,9 @@ public:
   FILETIME  GetFileTimeCreated();
   FILETIME  GetFileTimeModified();
   FILETIME  GetFileTimeAccessed();
+  bool      GetFileTimeCreated (SYSTEMTIME& p_time);
+  bool      GetFileTimeModified(SYSTEMTIME& p_time);
+  bool      GetFileTimeAccessed(SYSTEMTIME& p_time);
   bool      GetFileAttribute(FAttributes p_attribute);
   bool      GetIsTempFile();
   bool      GetIsSharedMemory();

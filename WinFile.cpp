@@ -33,11 +33,11 @@
 #include <AclAPI.h>
 #include <io.h>
 
-#ifdef _DEBUG
-#define new DEBUG_NEW
-#undef THIS_FILE
-static char THIS_FILE[] = __FILE__;
-#endif
+// #ifdef _DEBUG
+// #define new DEBUG_NEW
+// #undef THIS_FILE
+// static char THIS_FILE[] = __FILE__;
+// #endif
 
 // Do not complain about enum classes
 #pragma warning (disable: 26812)
@@ -1636,6 +1636,39 @@ WinFile::SetFileTimeAccessed(FILETIME p_accessed)
   return false;
 }
 
+bool
+WinFile::SetFileTimeCreated(SYSTEMTIME& p_created)
+{
+  FILETIME time;
+  if(::SystemTimeToFileTime(&p_created,&time))
+  {
+    return SetFileTimeAccessed(time);
+  }
+  return false;
+}
+
+bool
+WinFile::SetFileTimeModified(SYSTEMTIME& p_modified)
+{
+  FILETIME time;
+  if(::SystemTimeToFileTime(&p_modified,&time))
+  {
+    return SetFileTimeModified(time);
+  }
+  return false;
+}
+
+bool
+WinFile::SetFileTimeAccessed(SYSTEMTIME& p_accessed)
+{
+  FILETIME time;
+  if(::SystemTimeToFileTime(&p_accessed,&time))
+  {
+    return SetFileTimeAccessed(time);
+  }
+  return false;
+}
+
 // NOT thread safe: Must be set for the total process!
 // And can only be set in multiples of 4K up to 1024K
 bool
@@ -1985,6 +2018,45 @@ WinFile::GetFileTimeAccessed()
     m_error = ERROR_FILE_NOT_FOUND;
   }
   return empty;
+}
+
+bool
+WinFile::GetFileTimeCreated(SYSTEMTIME& p_time)
+{
+  memset(&p_time,0,sizeof(SYSTEMTIME));
+  FILETIME time = GetFileTimeCreated();
+  if(!m_error)
+  {
+    ::FileTimeToSystemTime(&time,&p_time);
+    return true;
+  }
+  return false;
+}
+
+bool
+WinFile::GetFileTimeModified(SYSTEMTIME& p_time)
+{
+  memset(&p_time,0,sizeof(SYSTEMTIME));
+  FILETIME time = GetFileTimeModified();
+  if(!m_error)
+  {
+    ::FileTimeToSystemTime(&time,&p_time);
+    return true;
+  }
+  return false;
+}
+
+bool
+WinFile::GetFileTimeAccessed(SYSTEMTIME& p_time)
+{
+  memset(&p_time,0,sizeof(SYSTEMTIME));
+  FILETIME time = GetFileTimeAccessed();
+  if(!m_error)
+  {
+    ::FileTimeToSystemTime(&time,&p_time);
+    return true;
+  }
+  return false;
 }
 
 // See if file is a opened as a shared memory segment
