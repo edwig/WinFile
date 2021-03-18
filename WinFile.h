@@ -262,6 +262,10 @@ public:
   BOMOpenResult  DefuseBOM(const uchar*  p_pointer            // First gotten string in the file
                           ,BOMType&      p_type               // Return: type of BOM (if any)
                           ,unsigned int& p_skip);             // Return: number of chars to skip
+  // Check for Unicode UTF-16 in the buffer
+  bool      IsTextUnicodeUTF16(const uchar* p_pointer,size_t p_length);
+  // Check for Unicode UTF-8 in the buffer
+  bool      IsTextUnicodeUTF8 (const uchar* p_pointer,size_t p_length);
   // Getting the filename from a dialog
   bool      SetFilenameByDialog(HWND     p_parent             // Parent HWND (if any)
                                ,bool     p_open               // true = Open/New, false = SaveAs

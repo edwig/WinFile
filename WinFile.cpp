@@ -2425,6 +2425,69 @@ WinFile::GetBaseDirectory(string& p_path)
   return result;
 }
 
+  // Check for Unicode UTF-16 in the buffer
+bool
+WinFile::IsTextUnicodeUTF16(const uchar* p_pointer,size_t p_length)
+{
+  int result = IS_TEXT_UNICODE_UNICODE_MASK;
+  return (bool)::IsTextUnicode(p_pointer,(int)p_length,&result);
+}
+
+// Check for Unicode UTF-8 in the buffer
+//
+// https://en.wikipedia.org/wiki/UTF-8
+//   
+//              Byte 1     Byte 2     Byte 3     Byte 4
+// -----------|----------|----------|----------|----------|
+// 1 Byte     | 0xxxxxxx |          |          |          |
+// 2 Bytes    | 110xxxxx | 10xxxxxx |          |          |
+// 3 Bytes    | 1110xxxx | 10xxxxxx | 10xxxxxx |          |
+// 4 Bytes    | 11110xxx | 10xxxxxx | 10xxxxxx | 10xxxxxx |
+//
+bool
+WinFile::IsTextUnicodeUTF8(const uchar* p_pointer,size_t p_length)
+{
+  int blocklen = 1;
+  bool ascii = true;
+
+  while(*p_pointer && p_length--)
+  {
+    unsigned char ch = *p_pointer++;
+
+    if(ascii)
+    {
+      if(ch & 0x80)
+      {
+             if((ch >> 3) == 0x1E) blocklen = 3;
+        else if((ch >> 4) == 0x0E) blocklen = 2;
+        else if((ch >> 5) == 0x06) blocklen = 1;
+        else
+        {
+          // No UTF-8 Escape code
+          return false;
+        }
+        ascii = false;
+      }
+    }
+    else
+    {
+      if((ch >> 6) == 0x2)
+      {
+        if(--blocklen == 0)
+        {
+          ascii = true;
+        }
+      }
+      else
+      {
+        // Can only for 0x10xxxxxxx
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 //////////////////////////////////////////////////////////////////////////
 //
 // PAGE BUFFER:

@@ -436,6 +436,27 @@ void TestSpecialFolder()
   std::cout << "Desktop file: " << file.GetFilename() << std::endl;
 }
 
+// Testing the UTF-8 check
+void TestUnicodeUTF8()
+{
+  WinFile file("C:\\TMP\\test_utf8.txt");
+  if(file.Open(winfile_read))
+  {
+    std::string content;
+    file.Read(content);
+    bool is8 = file.IsTextUnicodeUTF8((const uchar*)content.c_str(),content.size());
+
+    std::cout << "Testfile UTF8 open" << std::endl;
+    std::cout << "Check for UTF8: " << (is8 ? "YES" : "NO") << std::endl;
+
+    file.Close();
+  }
+  else
+  {
+    std::cout << "UTF8 FILE NOT FOUND: " << file.GetFilename() << std::endl;
+  }
+}
+
 //////////////////////////////////////////////////////////////////////////
 //
 // MAIN DRIVER
@@ -461,6 +482,8 @@ int main()
   TestGetFiletimes();
   // Testing special folders
   TestSpecialFolder();
+  // Testing the UTF-8 check
+  TestUnicodeUTF8();
 
   // Wait for user approval
   std::cout << std::endl;
