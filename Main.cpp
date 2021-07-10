@@ -34,7 +34,6 @@ void TestReadingWriting()
 
   if(file.Open(winfile_write | FFlag::open_trans_text))
   {
-
     for(auto number = 0; number < 10; ++number)
     {
       file.Write(testing);

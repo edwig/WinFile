@@ -423,18 +423,21 @@ WinFile::DeleteDirectory()
 // Delete the file by moving it to the trashcan
 // by way of the Explorer SH(ell) function.
 bool
-WinFile::DeleteToTrashcan()
+WinFile::DeleteToTrashcan(bool p_show /*= false*/,bool p_confirm /*= false*/)
 {
   // Reset the error
   m_error = 0;
 
-  if (m_file)
+  // Check if file still open
+  // in that case we cannot delete it
+  if(m_file)
   {
     m_error = ERROR_OPEN_FILES;
     return false;
   }
 
-  if (m_filename.empty())
+  // Check that we have a valid filename
+  if(m_filename.empty() || _access(m_filename.c_str(),0) != 0)
   {
     m_error = ERROR_FILE_NOT_FOUND;
     return false;
@@ -450,8 +453,19 @@ WinFile::DeleteToTrashcan()
   memset(&file,0,sizeof(SHFILEOPSTRUCT));
   file.wFunc  = FO_DELETE;
   file.pFrom  = filelist;
-  file.fFlags = FOF_NOCONFIRMATION | FOF_FILESONLY | FOF_ALLOWUNDO | FOF_SILENT;
+  file.fFlags = FOF_FILESONLY | FOF_ALLOWUNDO;
   file.lpszProgressTitle = "Progress";
+
+  // Add our options
+  if(!p_show)
+  {
+    file.fFlags |= FOF_SILENT;
+  }
+  if(!p_confirm)
+  {
+    file.fFlags |= FOF_NOCONFIRMATION;
+  }
+
 
   // Now go move to trashcan via the shell file operation
   if(SHFileOperation(&file))
@@ -565,7 +579,7 @@ WinFile::CreateTempFileName(string p_pattern,string p_extension /*= ""*/)
 }
 
 void* 
-WinFile::OpenAsSharedMemmory(string   p_name
+WinFile::OpenAsSharedMemory(string   p_name
                            ,bool     p_local     /*= true*/
                            ,bool     p_trycreate /*= false*/
                            ,size_t   p_size      /*= 0*/)
@@ -821,7 +835,7 @@ WinFile::Read(void* p_buffer,size_t p_bufsize,int& p_read)
 
 // Writing a string to the WinFile
 bool
-WinFile::Write(string p_string)
+WinFile::Write(const string& p_string)
 {
   // Reset the error
   m_error = 0;

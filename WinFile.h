@@ -184,7 +184,7 @@ public:
   bool      CanAccess(bool p_write = false);
   bool      DeleteFile();
   bool      DeleteDirectory();
-  bool      DeleteToTrashcan();
+  bool      DeleteToTrashcan(bool p_show = false, bool p_confirm = false);
   bool      CopyFile(string p_destination,FCopy p_how = winfile_copy);
   bool      MoveFile(string p_destination,FMove p_how = winfile_move);
   bool      CreateTempFileName(string p_pattern, string p_extension = "");
@@ -194,7 +194,7 @@ public:
   // OPERATIONS TO READ AND WRITE CONTENT
   bool      Read(string& p_string);
   bool      Read(void* p_buffer,size_t p_bufsize,int& p_read);
-  bool      Write(string p_string);
+  bool      Write(const string& p_string);
   bool      Write(void* p_buffer,size_t p_bufsize);
   size_t    Position();
   size_t    Position(FSeek p_how,LONGLONG p_position = 0);
@@ -276,10 +276,10 @@ public:
                                ,string   p_filter   = ""      // Filter for extensions
                                ,string   p_direct   = "");    // Directory to start in
   // Open file as a shared memory segment
-  void*     OpenAsSharedMemmory(string   p_name               // Name of the shared memory segment to open
-                               ,bool     p_local     = true   // Standard on your local session, otherwise global
-                               ,bool     p_trycreate = false  // Create with m_filename if not exists
-                               ,size_t   p_size      = 0);    // Size of memory if we create it
+  void*     OpenAsSharedMemory(string   p_name               // Name of the shared memory segment to open
+                              ,bool     p_local     = true   // Standard on your local session, otherwise global
+                              ,bool     p_trycreate = false  // Create with m_filename if not exists
+                              ,size_t   p_size      = 0);    // Size of memory if we create it
 
   // OPERATORS
 
