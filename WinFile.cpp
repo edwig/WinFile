@@ -31,6 +31,7 @@
 #include <shlobj.h>
 #include <winnt.h>
 #include <AclAPI.h>
+#include <filesystem>
 #include <io.h>
 
 // #ifdef _DEBUG
@@ -390,8 +391,9 @@ WinFile::DeleteFile()
 }
 
 // Delete the directory from the filesystem
-bool
-WinFile::DeleteDirectory()
+// Returns the number of deleted items (files,directories)
+unsigned
+WinFile::DeleteDirectory(bool p_recursive /*= false*/)
 {
   // Reset the error
   m_error = 0;
@@ -399,25 +401,33 @@ WinFile::DeleteDirectory()
   if(m_file)
   {
     m_error = ERROR_OPEN_FILES;
-    return false;
+    return 0;
   }
 
   if(m_filename.empty())
   {
     m_error = ERROR_FILE_NOT_FOUND;
-    return false;
+    return 0;
   }
 
-  // Call the MS-Windows SDK function
-  if(::RemoveDirectory(m_filename.c_str()) == FALSE)
+  std::filesystem::path path(m_filename);
+  std::error_code error;
+  uintmax_t removed = 0;
+
+  if(p_recursive)
   {
-    if(GetLastError() != ERROR_FILE_NOT_FOUND)
-    {
-      m_error = ::GetLastError();
-      return false;
-    }
+    removed = std::filesystem::remove_all(path,error);
   }
-  return true;
+  else
+  {
+    removed = std::filesystem::remove(path,error);
+  }
+  if(error)
+  {
+    m_error = error.value();
+    return 0;
+  }
+  return (unsigned) removed;
 }
 
 // Delete the file by moving it to the trashcan

@@ -183,7 +183,7 @@ public:
   bool      Exists();
   bool      CanAccess(bool p_write = false);
   bool      DeleteFile();
-  bool      DeleteDirectory();
+  unsigned  DeleteDirectory(bool p_recursive = false);
   bool      DeleteToTrashcan(bool p_show = false, bool p_confirm = false);
   bool      CopyFile(string p_destination,FCopy p_how = winfile_copy);
   bool      MoveFile(string p_destination,FMove p_how = winfile_move);
