@@ -280,6 +280,7 @@ public:
                               ,bool     p_local     = true   // Standard on your local session, otherwise global
                               ,bool     p_trycreate = false  // Create with m_filename if not exists
                               ,size_t   p_size      = 0);    // Size of memory if we create it
+  string    LegalDirectoryName(string p_name,bool p_extensionAllowed = true);
 
   // OPERATORS
 

@@ -32,6 +32,7 @@
 #include <winnt.h>
 #include <AclAPI.h>
 #include <filesystem>
+#include <algorithm>
 #include <io.h>
 
 // #ifdef _DEBUG
@@ -2331,6 +2332,80 @@ WinFile::operator=(const WinFile& p_other)
     }
   }
   return *this;
+}
+
+string
+WinFile::LegalDirectoryName(string p_name,bool p_extensionAllowed /*= true*/)
+{
+  // Check on non-empty
+  if(p_name.empty())
+  {
+    return "NewDirectory";
+  }
+
+  string name(p_name);
+  const char  forbidden_all[] = "<>:\"/\\|?*";
+  const char  forbidden_ext[] = "<>:\"/\\|?*.";
+  const char* reserved[] =
+  {
+    "CON", "PRN", "AUX", "NUL",
+    "COM1","COM2","COM3","COM4","COM5","COM6","COM7","COM8","COM9",
+    "LPT1","LPT2","LPT3","LPT4","LPT5","LPT6","LPT7","LPT8","LPT9"
+  };
+
+  // Use either one of these
+  const char* forbidden = p_extensionAllowed ? forbidden_all : forbidden_ext;
+
+  // Replace forbidden characters by an '_'
+  for(std::string::iterator it = name.begin();it != name.end();++it)
+  {
+    // Replace interpunction
+    if(strchr(forbidden,*it) != nullptr)
+    {
+      *it = '_';
+    }
+    // Replace non-printable characters
+    if(*it < ' ')
+    {
+      *it = '=';
+    }
+  }
+
+  // Construct uppercase name
+  string upper(name);
+  std::transform(upper.begin(),upper.end(),upper.begin(),::toupper);
+
+  // Scan for reserved names
+  for(unsigned index = 0;index < (sizeof(reserved) / sizeof(const char*)); ++index)
+  {
+    // Direct transformation of the reserved name
+    if(strcmp(reserved[index],upper.c_str()) == 0)
+    {
+      name = "Directory_" + name;
+      break;
+    }
+    // No extension allowed after a reserved name (e.g. "LPT3.txt")
+    size_t pos = upper.find(reserved[index]);
+    if(pos == 0 && name.size() > strlen(reserved[index]))
+    {
+      pos += strlen(reserved[index]);
+      if(name[pos] == '.')
+      {
+        name[pos] = '_';
+        break;
+      }
+    }
+  }
+
+  // Check on the ending on a space or dot
+  char ch = name.back();
+  if(ch == '.' || ch == ' ')
+  {
+    name.pop_back();
+  }
+
+  // Legal directory name
+  return name;
 }
 
 //////////////////////////////////////////////////////////////////////////

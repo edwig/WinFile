@@ -435,6 +435,12 @@ void TestSpecialFolder()
   std::cout << "Desktop file: " << file.GetFilename() << std::endl;
 }
 
+//////////////////////////////////////////////////////////////////////////
+//
+// UTF-8
+//
+//////////////////////////////////////////////////////////////////////////
+
 // Testing the UTF-8 check
 void TestUnicodeUTF8()
 {
@@ -458,6 +464,32 @@ void TestUnicodeUTF8()
 
 //////////////////////////////////////////////////////////////////////////
 //
+// Valid directory/file names
+//
+//////////////////////////////////////////////////////////////////////////
+
+void TestValidNames()
+{
+  WinFile file;
+
+  string directory1("domain\\user.name");
+  string expected1("domain_user.name");
+  string expected2("domain_user_name");
+
+  string test1 = file.LegalDirectoryName(directory1);
+  if(test1.compare(expected1) != 0)
+  {
+    std::cout << "Legal directory name check failed: " << test1 << std::endl;
+  }
+  string test2 = file.LegalDirectoryName(directory1,false);
+  if(test2.compare(expected2) != 0)
+  {
+    std::cout << "Legal directory name check including extension failed: " << test2 << std::endl;
+  }
+}
+
+//////////////////////////////////////////////////////////////////////////
+//
 // MAIN DRIVER
 //
 //////////////////////////////////////////////////////////////////////////
@@ -469,6 +501,8 @@ int main()
 
   HRESULT hr = CoInitialize(nullptr);
 
+  // Testing valid names
+  TestValidNames();
   // Basic string write/re-read test
   TestReadingWriting();
   // Now do a performance test
