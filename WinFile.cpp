@@ -66,7 +66,7 @@ WinFile::WinFile()
 }
 
 // CTOR from a filename
-WinFile::WinFile(string p_filename)
+WinFile::WinFile(CString p_filename)
         :m_filename(p_filename)
 {
 }
@@ -93,7 +93,9 @@ WinFile::~WinFile()
 //////////////////////////////////////////////////////////////////////////
 
 bool
-WinFile::Open(DWORD p_flags /*= winfile_read*/,FAttributes p_attribs /*= FAttributes::attrib_none*/)
+WinFile::Open(DWORD       p_flags    /*= winfile_read             */
+             ,FAttributes p_attribs  /*= FAttributes::attrib_none */
+             ,Encoding    p_encoding /*= Encoding::NO_BOM         */)
 {
   bool result = false;
   bool append = false;
@@ -109,7 +111,7 @@ WinFile::Open(DWORD p_flags /*= winfile_read*/,FAttributes p_attribs /*= FAttrib
     m_error = ERROR_ALREADY_EXISTS;
     return result;
   }
-  if(m_filename.empty())
+  if(m_filename.IsEmpty())
   {
     m_error = ERROR_FILE_NOT_FOUND;
     return result;
@@ -153,8 +155,14 @@ WinFile::Open(DWORD p_flags /*= winfile_read*/,FAttributes p_attribs /*= FAttrib
   attrib |= (p_flags & FFlag::open_sequential)    ? FILE_FLAG_SEQUENTIAL_SCAN : 0;
   attrib |= p_attribs;
 
+  // Getting the encoding
+  if(p_encoding != Encoding::NO_BOM)
+  {
+    m_encoding = p_encoding;
+  }
+
   // Try to create/open the file
-  m_file = CreateFile((LPCSTR)m_filename.c_str()
+  m_file = CreateFile((LPCTSTR)m_filename.GetString()
                      ,access
                      ,sharem
                      ,nullptr     // RIGHTS not implemented
@@ -178,6 +186,10 @@ WinFile::Open(DWORD p_flags /*= winfile_read*/,FAttributes p_attribs /*= FAttrib
         m_error = ::GetLastError();
         return result;
       }
+    }
+    else if((p_flags & FFlag::open_write) && (m_encoding > Encoding::NO_BOM))
+    {
+      WriteEncodingBOM();
     }
     // Keep the open flags
     m_openMode = p_flags;
@@ -280,21 +292,21 @@ WinFile::CreateDirectory()
   m_error = 0;
 
   // Make sure we have a filename
-  if(m_filename.empty())
+  if(m_filename.IsEmpty())
   {
     m_error = ERROR_NOT_FOUND;
     return false;
   }
-  string drive,directory,filename,extension;
+  CString drive,directory,filename,extension;
   FilenameParts(m_filename,drive,directory,filename,extension);
 
-  string dirToBeOpened(drive);
-  string path(directory);
-  string part = GetBaseDirectory(path);
-  while(!part.empty())
+  CString dirToBeOpened(drive);
+  CString path(directory);
+  CString part = GetBaseDirectory(path);
+  while(!part.IsEmpty())
   {
     dirToBeOpened += "\\" + part;
-    if (!::CreateDirectory(dirToBeOpened.c_str(),nullptr))
+    if (!::CreateDirectory(dirToBeOpened.GetString(),nullptr))
     {
       m_error = ::GetLastError();
       if(m_error != ERROR_ALREADY_EXISTS)
@@ -317,12 +329,12 @@ WinFile::Exists()
     return true;
   }
   // If not filename given it obviously does not exists
-  if(m_filename.empty())
+  if(m_filename.IsEmpty())
   {
     return false;
   }
   // Ask the filesystem, regardless of read/write rights
-  return _access(m_filename.c_str(),0) != -1;
+  return _taccess(m_filename.GetString(),0) != -1;
 }
 
 // Check for access to the file
@@ -353,7 +365,7 @@ WinFile::CanAccess(bool p_write /*= false*/)
   }
   // Use low-level POSIX access function.
   // Other MS-Windows functions call this one, so use it directly
-  if(_access(m_filename.c_str(),mode) != -1)
+  if(_taccess(m_filename.GetString(),mode) != -1)
   {
     return true;
   }
@@ -373,14 +385,14 @@ WinFile::DeleteFile()
     return false;
   }
 
-  if(m_filename.empty())
+  if(m_filename.IsEmpty())
   {
     m_error = ERROR_FILE_NOT_FOUND;
     return false;
   }
 
   // Call the MS-Windows SDK function
-  if(::DeleteFile(m_filename.c_str()) == FALSE)
+  if(::DeleteFile(m_filename.GetString()) == FALSE)
   {
     if(GetLastError() != ERROR_FILE_NOT_FOUND)
     {
@@ -405,13 +417,13 @@ WinFile::DeleteDirectory(bool p_recursive /*= false*/)
     return 0;
   }
 
-  if(m_filename.empty())
+  if(m_filename.IsEmpty())
   {
     m_error = ERROR_FILE_NOT_FOUND;
     return 0;
   }
 
-  std::filesystem::path path(m_filename);
+  std::filesystem::path path(m_filename.GetString());
   std::error_code error;
   uintmax_t removed = 0;
 
@@ -448,7 +460,7 @@ WinFile::DeleteToTrashcan(bool p_show /*= false*/,bool p_confirm /*= false*/)
   }
 
   // Check that we have a valid filename
-  if(m_filename.empty() || _access(m_filename.c_str(),0) != 0)
+  if(m_filename.IsEmpty() || _taccess(m_filename.GetString(),0) != 0)
   {
     m_error = ERROR_FILE_NOT_FOUND;
     return false;
@@ -456,16 +468,16 @@ WinFile::DeleteToTrashcan(bool p_show /*= false*/,bool p_confirm /*= false*/)
 
   // Copy the filename for extra 0's after the name
   // so it becomes a list of just one (1) filename
-  char   filelist  [MAX_PATH + 2];
-  memset(filelist,0,MAX_PATH + 2);
-  strcpy_s(filelist,MAX_PATH,m_filename.c_str());
+  TCHAR filelist   [MAX_PATH + 2];
+  memset(filelist,0,(MAX_PATH + 2) * sizeof(TCHAR));
+  _tcscpy_s(filelist,MAX_PATH,m_filename.GetString());
 
   SHFILEOPSTRUCT file;
   memset(&file,0,sizeof(SHFILEOPSTRUCT));
   file.wFunc  = FO_DELETE;
   file.pFrom  = filelist;
   file.fFlags = FOF_FILESONLY | FOF_ALLOWUNDO;
-  file.lpszProgressTitle = "Progress";
+  file.lpszProgressTitle = _T("Progress");
 
   // Add our options
   if(!p_show)
@@ -476,7 +488,6 @@ WinFile::DeleteToTrashcan(bool p_show /*= false*/,bool p_confirm /*= false*/)
   {
     file.fFlags |= FOF_NOCONFIRMATION;
   }
-
 
   // Now go move to trashcan via the shell file operation
   if(SHFileOperation(&file))
@@ -489,13 +500,13 @@ WinFile::DeleteToTrashcan(bool p_show /*= false*/,bool p_confirm /*= false*/)
 
 // Make a copy of the file
 bool
-WinFile::CopyFile(string p_destination,FCopy p_how /*= winfile_copy*/)
+WinFile::CopyFile(CString p_destination,FCopy p_how /*= winfile_copy*/)
 {
   // Reset the error
   m_error = 0;
 
   // Check if we have both names
-  if(m_filename.empty() || p_destination.empty())
+  if(m_filename.IsEmpty() || p_destination.IsEmpty())
   {
     m_error = ERROR_FILE_NOT_FOUND;
     return false;
@@ -509,7 +520,7 @@ WinFile::CopyFile(string p_destination,FCopy p_how /*= winfile_copy*/)
   }
 
   // Copy the file
-  if(::CopyFileEx(m_filename.c_str(),p_destination.c_str(),nullptr,nullptr,FALSE,p_how) == 0)
+  if(::CopyFileEx(m_filename.GetString(),p_destination.GetString(),nullptr,nullptr,FALSE,p_how) == 0)
   {
     m_error = ::GetLastError();
     return false;
@@ -519,13 +530,13 @@ WinFile::CopyFile(string p_destination,FCopy p_how /*= winfile_copy*/)
 
 // Move the file by making a copy and removing the original file
 bool
-WinFile::MoveFile(string p_destination,FMove p_how /*= winfile_move*/)
+WinFile::MoveFile(CString p_destination,FMove p_how /*= winfile_move*/)
 {
   // Reset the error
   m_error = 0;
 
   // Check if we have both names
-  if(m_filename.empty() || p_destination.empty())
+  if(m_filename.IsEmpty() || p_destination.IsEmpty())
   {
     m_error = ERROR_FILE_NOT_FOUND;
     return false;
@@ -539,7 +550,7 @@ WinFile::MoveFile(string p_destination,FMove p_how /*= winfile_move*/)
   }
 
   // Copy the file
-  if(::MoveFileEx(m_filename.c_str(),p_destination.c_str(),p_how) == 0)
+  if(::MoveFileEx(m_filename.GetString(),p_destination.GetString(),p_how) == 0)
   {
     m_error = ::GetLastError();
     return false;
@@ -552,17 +563,17 @@ WinFile::MoveFile(string p_destination,FMove p_how /*= winfile_move*/)
 
 // Create a temporary file on the %TMP% directory
 bool      
-WinFile::CreateTempFileName(string p_pattern,string p_extension /*= ""*/)
+WinFile::CreateTempFileName(CString p_pattern,CString p_extension /*= ""*/)
 {
   // Directory for GetTempFileName cannot be larger than (MAX_PATH-14)
   // See documentation on "docs.microsoft.com"
-  char tempdirectory[MAX_PATH - 14];
+  TCHAR tempdirectory[MAX_PATH - 14];
   ::GetTempPath(MAX_PATH-14,tempdirectory);
 
   // Getting the temp filename
-  char tempfilename[MAX_PATH + 1];
+  TCHAR tempfilename[MAX_PATH + 1];
   UINT unique = 0; // Use auto numbering and creation of the temporary file!
-  if(::GetTempFileName(tempdirectory,p_pattern.c_str(),unique,tempfilename) == 0)
+  if(::GetTempFileName(tempdirectory,p_pattern.GetString(),unique,tempfilename) == 0)
   {
     m_error = ::GetLastError();
     return false;
@@ -572,13 +583,13 @@ WinFile::CreateTempFileName(string p_pattern,string p_extension /*= ""*/)
   m_filename = tempfilename;
 
   // Add the optional extension
-  if(!p_extension.empty())
+  if(!p_extension.IsEmpty())
   {
-    ::DeleteFile(m_filename.c_str());
-    size_t pos = m_filename.find_last_of('.');
+    ::DeleteFile(m_filename.GetString());
+    int pos = m_filename.ReverseFind('.');
     if(pos > 0)
     {
-      m_filename = m_filename.substr(0,pos);
+      m_filename = m_filename.Left(pos);
     }
     if(p_extension[0] != '.')
     {
@@ -590,7 +601,7 @@ WinFile::CreateTempFileName(string p_pattern,string p_extension /*= ""*/)
 }
 
 void* 
-WinFile::OpenAsSharedMemory(string   p_name
+WinFile::OpenAsSharedMemory(CString  p_name
                            ,bool     p_local     /*= true*/
                            ,bool     p_trycreate /*= false*/
                            ,size_t   p_size      /*= 0*/)
@@ -606,7 +617,7 @@ WinFile::OpenAsSharedMemory(string   p_name
   }
 
   // Check that name does NOT have a '\' in it
-  if(p_name.find('\\') >= 0)
+  if(p_name.Find('\\') >= 0)
   {
     m_error = ERROR_INVALID_FUNCTION;
     return nullptr;
@@ -624,12 +635,17 @@ WinFile::OpenAsSharedMemory(string   p_name
       // If fails: m_error already set
       return nullptr;
     }
+    // Check handle to be sure!!
+    if(m_file == nullptr || m_file == INVALID_HANDLE_VALUE)
+    {
+      return nullptr;
+    }
 
     // File is now opened: try to create a file mapping
     DWORD protect  = PAGE_READWRITE;
     DWORD sizeLow  = p_size & 0x0FFFFFFF;
     DWORD sizeHigh = p_size >> 32;
-    m_file = CreateFileMapping(m_file,nullptr,protect,sizeLow,sizeHigh,p_name.c_str());
+    m_file = CreateFileMapping(m_file,nullptr,protect,sizeLow,sizeHigh,p_name.GetString());
     if(m_file == NULL)
     {
       m_error = ::GetLastError();
@@ -639,7 +655,7 @@ WinFile::OpenAsSharedMemory(string   p_name
   else
   {
     // Try to open for read-write access. Child processes can NOT inherit the handle
-    m_file = OpenFileMapping(FILE_MAP_ALL_ACCESS,FALSE,p_name.c_str());
+    m_file = OpenFileMapping(FILE_MAP_ALL_ACCESS,FALSE,p_name.GetString());
     if(m_file == NULL)
     {
       m_error = ::GetLastError();
@@ -666,7 +682,7 @@ bool
 WinFile::GrantFullAccess()
 {
   // Check if we have a filename to work on
-  if(m_filename.empty())
+  if(m_filename.IsEmpty())
   {
     return false;
   }
@@ -702,12 +718,12 @@ WinFile::GrantFullAccess()
       __leave;
     }
     // Try to modify the object's DACL.
-    if(ERROR_SUCCESS != SetNamedSecurityInfo((LPSTR)m_filename.c_str()     // name of the object
-                                             ,SE_FILE_OBJECT               // type of object: file or directory
-                                             ,DACL_SECURITY_INFORMATION    // change only the object's DACL
-                                             ,nullptr,nullptr              // do not change owner or group
-                                             ,acl                          // DACL specified
-                                             ,nullptr))                    // do not change SACL
+    if(ERROR_SUCCESS != SetNamedSecurityInfo((LPTSTR)m_filename.GetString() // name of the object
+                                             ,SE_FILE_OBJECT                // type of object: file or directory
+                                             ,DACL_SECURITY_INFORMATION     // change only the object's DACL
+                                             ,nullptr,nullptr               // do not change owner or group
+                                             ,acl                           // DACL specified
+                                             ,nullptr))                     // do not change SACL
     {
       // SetNamedSecurityInfo failed to change the DACL Maximum Allowed Access
       __leave;
@@ -733,7 +749,7 @@ WinFile::GrantFullAccess()
 void
 WinFile::ForgetFile()
 {
-  m_filename.clear();
+  m_filename.Empty();
   m_file         = NULL;
   m_openMode     = FFlag::no_mode;
   m_sharedMemory = 0L;
@@ -752,9 +768,10 @@ WinFile::ForgetFile()
 
 // Read a string (possibly with CR/LF to newline translation)
 bool
-WinFile::Read(string& p_string)
+WinFile::Read(CString& p_string)
 {
-  string result;
+  std::string result;
+  bool unicodeSkip(false);
 
   // Reset the error
   m_error = 0;
@@ -766,7 +783,7 @@ WinFile::Read(string& p_string)
     return false;
   }
 
-  // Do NOT do this in binary mode: no backing pagebuffer!
+  // Do NOT do this in binary mode: no backing page buffer!
   if(m_openMode & FFlag::open_trans_binary)
   {
     m_error = ERROR_INVALID_FUNCTION;
@@ -777,11 +794,11 @@ WinFile::Read(string& p_string)
 
   while(true)
   {
-    char ch = PageBufferRead();
-    if(ch == EOF)
+    uchar ch = PageBufferRead();
+    if(ch == (uchar)EOF)
     {
       m_error = ::GetLastError();
-      p_string = result;
+      p_string = result.c_str();
       return false;
     }
     result += ch;
@@ -789,18 +806,40 @@ WinFile::Read(string& p_string)
     // Do the CR/LF to "\n" translation
     if(m_openMode & FFlag::open_trans_text)
     {
+      if(ch == '\n' || ch == '\r')
+      {
+        unicodeSkip = (m_encoding == Encoding::LE_UTF16) ||
+                      (m_encoding == Encoding::BE_UTF16);
+      }
       if(ch == '\r')
       {
         crstate = true;
+        if(m_encoding == Encoding::LE_UTF16)
+        {
+          result += PageBufferRead();
+        }
         continue;
+      }
+      if(ch == '\n' && m_encoding == Encoding::LE_UTF16)
+      {
+        // Read in trailing zero for a newline in this encoding
+        result += PageBufferRead();
       }
       if(crstate && ch == '\n')
       {
-        result[result.size()-2] = ch;
-        result.erase(result.size()-1);
+        if(unicodeSkip)
+        {
+          result[result.size() - 4] = result[result.size() - 2];
+          result[result.size() - 3] = result[result.size() - 1];
+        }
+        else
+        {
+          result[result.size() - 2] = ch;
+        }
+        result.erase(result.size() - 1 - (unicodeSkip ? 1 : 0));
+        crstate = false;
       }
     }
-    crstate = false;
 
     // See if we are ready reading the string
     if(ch == '\n')
@@ -808,8 +847,98 @@ WinFile::Read(string& p_string)
       break;
     }
   }
-  p_string = result;
+  p_string = TranslateInputBuffer(result);
   return true;
+}
+
+CString 
+WinFile::TranslateInputBuffer(std::string& p_string)
+{
+#ifdef UNICODE
+  if(m_encoding == Encoding::UTF8)
+  {
+    return ExplodeString(p_string,CODEPAGE_UTF8);
+  }
+  else if(m_encoding == Encoding::BE_UTF16)
+  {
+    BlefuscuToLilliput(p_string);
+  }
+  if(m_encoding == Encoding::LE_UTF16||
+     m_encoding == Encoding::BE_UTF16)
+  {
+    // We are already UTF-16
+    CString result;
+    int size = (int) p_string.size();
+    LPTSTR resbuf = result.GetBufferSetLength(size + 1);
+    memcpy(resbuf,p_string.c_str(),size);
+    size /= sizeof(TCHAR);
+    resbuf[size] = (TCHAR) 0;
+    result.ReleaseBufferSetLength(size);
+    return result;
+  }
+  // Last resort, create CString for current codepage
+  // Mostly MS-Windows 1252 in Western Europe
+  return ExplodeString(p_string,GetACP());
+#else
+  if(m_encoding == Encoding::UTF8)
+  {
+    // Convert UTF-8 -> UTF-16 -> MBCS
+    int   clength = 0;
+    // Getting the needed buffer length (in code points)
+    clength = MultiByteToWideChar(CODEPAGE_UTF8,MB_PRECOMPOSED,p_string.c_str(),-1,NULL,NULL);
+    uchar* buffer = new uchar[clength * 2];
+    // Doing the 'real' conversion
+    clength = MultiByteToWideChar(CODEPAGE_UTF8,MB_PRECOMPOSED,p_string.c_str(),-1,reinterpret_cast<LPWSTR>(buffer),clength);
+
+    // Getting the needed length for MBCS
+    clength = ::WideCharToMultiByte(GetACP(),0,(LPCWSTR) buffer,-1,NULL,NULL,NULL,NULL);
+    CString result;
+    LPTSTR strbuf = result.GetBufferSetLength(clength);
+    // Doing the conversion to MBCS
+    clength = ::WideCharToMultiByte(GetACP(),0,(LPCWSTR) buffer,-1,reinterpret_cast<LPSTR>(strbuf),clength,NULL,NULL);
+    result.ReleaseBuffer(clength);
+    delete[] buffer;
+    return result;
+  }
+  if(m_encoding == Encoding::BE_UTF16)
+  {
+    BlefuscuToLilliput(p_string);
+    // Be sure to end the string
+    p_string += (char) 0;
+    p_string += (char) 0;
+  }
+  if(m_encoding == Encoding::LE_UTF16 ||
+     m_encoding == Encoding::BE_UTF16 )
+  {
+    // Implode to MBCS
+    CString result;
+    int clength = 0;
+    // Getting the needed length for MBCS
+    clength = ::WideCharToMultiByte(GetACP(),0,(LPCWSTR) p_string.c_str(),-1,NULL,NULL,NULL,NULL);
+    LPTSTR buffer = result.GetBufferSetLength(clength);
+    // Doing the conversion from UTF-16 to MBCS
+    clength = ::WideCharToMultiByte(GetACP(),0,(LPCWSTR) p_string.c_str(),-1,reinterpret_cast<LPSTR>(buffer),clength,NULL,NULL);
+    buffer[clength] = 0;
+    result.ReleaseBufferSetLength(clength);
+    return result;
+  }
+  // Last resort, create CString (like we've always done before)
+  return CString(p_string.c_str());
+#endif
+}
+
+// Convert Big-Endian (Blefuscu) to Little-Endian (Lilliput)
+void
+WinFile::BlefuscuToLilliput(std::string& p_gulliver)
+{
+  uchar ch1,ch2;
+  for(size_t index = 0;index < p_gulliver.size();index += 2)
+  {
+    ch1 = p_gulliver[index];
+    ch2 = p_gulliver[index + 1];
+    p_gulliver[index    ] = ch2;
+    p_gulliver[index + 1] = ch1;
+  }
 }
 
 // Read a buffer directly from a binary file
@@ -846,7 +975,7 @@ WinFile::Read(void* p_buffer,size_t p_bufsize,int& p_read)
 
 // Writing a string to the WinFile
 bool
-WinFile::Write(const string& p_string)
+WinFile::Write(const CString& p_string)
 {
   // Reset the error
   m_error = 0;
@@ -865,24 +994,111 @@ WinFile::Write(const string& p_string)
     return false;
   }
 
+  // Convert to text standard string (always 8 bits!!)
   bool doText = (m_openMode & FFlag::open_trans_text) > 0;
+  std::string string = TranslateOutputBuffer(p_string);
 
-  for(auto& ch : p_string)
+  for(size_t index = 0;index < string.size();++index)
   {
+    uchar ch = string[index];
     if(doText && ch == '\n')
     {
-      if(PageBufferWrite('\r') == false)
+      if(!PageBufferWrite('\r'))
       {
         break;
       }
+      if(m_encoding == Encoding::BE_UTF16 ||
+         m_encoding == Encoding::LE_UTF16 )
+      {
+        if(!PageBufferWrite(0))
+        {
+          break;
+        }
+      }
     }
-    if(PageBufferWrite(ch) == false)
+    if(!PageBufferWrite(ch))
     {
       break;
     }
   }
 
   return true;
+}
+
+std::string 
+WinFile::TranslateOutputBuffer(const CString& p_string)
+{
+  std::string result;
+
+#ifdef UNICODE
+  if(m_encoding == Encoding::UTF8)
+  {
+    result = ImplodeString(p_string,CODEPAGE_UTF8);
+  }
+  if(m_encoding == Encoding::LE_UTF16 ||
+     m_encoding == Encoding::BE_UTF16)
+  {
+    // We are already UTF16
+    result.append(p_string.GetLength() * sizeof(TCHAR),(uchar) ' ');
+    memcpy((void*) result.c_str(),p_string.GetString(),p_string.GetLength() * sizeof(TCHAR));
+  }
+  if(m_encoding == Encoding::BE_UTF16)
+  {
+    BlefuscuToLilliput(result);
+  }
+  else if(m_encoding == Encoding::NO_BOM)
+  {
+    // Simply implode the string to MBCS
+    result = ImplodeString(p_string,GetACP());
+  }
+#else
+  if(m_encoding == Encoding::UTF8)
+  {
+    int   clength = 0;
+    int   blength = 0;
+
+    // Getting the length to convert to UTF-16
+    clength = MultiByteToWideChar(GetACP(),0,p_string.GetString(),-1,NULL,NULL);
+    blength = clength * 2;
+    uchar* buffer = new uchar[blength + 2];
+    // Real conversion to UTF-16
+    clength = MultiByteToWideChar(GetACP(),0,p_string.GetString(),-1,reinterpret_cast<LPWSTR>(buffer),blength);
+
+    // Getting the length to convert back to UTF-8
+    clength = WideCharToMultiByte(CODEPAGE_UTF8,0,(LPCWSTR) buffer,clength,NULL,0,NULL,NULL);
+    result.append(clength,' ');
+    // Real conversion to UTF-8
+    WideCharToMultiByte(CODEPAGE_UTF8,0,(LPCWSTR) buffer,clength,reinterpret_cast<LPSTR>(const_cast<char*>(result.c_str())),clength,NULL,NULL);
+    result.erase(clength - 1);
+    delete[] buffer;
+  }
+  if(m_encoding == Encoding::LE_UTF16 ||
+     m_encoding == Encoding::BE_UTF16)
+  {
+    int length = 0;
+    // Getting the needed length
+    length = MultiByteToWideChar(GetACP(),0,p_string.GetString(),-1,NULL,NULL);
+    length *= 2;
+    uchar* buffer = new uchar[length + 1];
+    // Doing the 'real' conversion
+    length = MultiByteToWideChar(GetACP(),0,p_string.GetString(),-1,reinterpret_cast<LPWSTR>(buffer),length);
+    length *= 2;
+    result.append(length,' ');
+    memcpy((void*)result.c_str(),buffer,length);
+    result.erase(length - 2);
+    delete[] buffer;
+  }
+  if(m_encoding == Encoding::BE_UTF16)
+  {
+    BlefuscuToLilliput(result);
+  }
+  if(m_encoding == Encoding::NO_BOM)
+  {
+    // Simply the string
+    result = p_string.GetString();
+  }
+#endif
+  return result;
 }
 
 // Writing a buffer block to a binary file
@@ -1095,8 +1311,8 @@ WinFile::Gets(uchar* p_buffer,size_t p_size)
   // Allowing to read in a next buffer from the filesystem
   for(size_t index = 0; index < p_size; ++index)
   {
-    int ch = Getch();
-    if (ch == EOF)
+    uchar ch = Getch();
+    if (ch == (uchar)EOF)
     {
       if(index > 0)
       {
@@ -1166,7 +1382,7 @@ WinFile::Putch(uchar p_char)
 }
 
 // Get the next character/byte from the file stream
-int
+uchar
 WinFile::Getch()
 {
   // Reset the error state
@@ -1186,7 +1402,7 @@ WinFile::Getch()
      m_ungetch = 0;
      return ch;
   }
-  int ch = PageBufferRead();
+  uchar ch = PageBufferRead();
   if(ch == '\r')
   {
     if(m_openMode & FFlag::open_trans_text)
@@ -1301,16 +1517,48 @@ WinFile::UnLockFile()
   return false;
 }
 
+bool
+WinFile::WriteEncodingBOM()
+{
+  switch(m_encoding)
+  {
+    case Encoding::NO_BOM:  break;
+    case Encoding::UTF8:    Putch(0xEF);
+                              Putch(0xBB);
+                              Putch(0xBF);
+                              break;
+    case Encoding::LE_UTF16:Putch(0xFF);
+                              Putch(0xFE);
+                              break;
+    case Encoding::BE_UTF16:Putch(0xFE);
+                              Putch(0xFF);
+                              break;
+    case Encoding::BE_UTF32:Putch(0);
+                              Putch(0);
+                              Putch(0xFE);
+                              Putch(0xFF);
+                              break;
+    case Encoding::LE_UTF32:Putch(0xFF);
+                              Putch(0xFE);
+                              Putch(0);
+                              Putch(0);
+                              break;
+    // Incompatible encodings on MS-Windows
+    default:                  return false;
+  }
+  return true;
+}
+
 // Check for a Byte-Order-Mark (BOM)
 // Returns the found type of BOM
 // and the number of bytes to skip in your input
 BOMOpenResult 
 WinFile::DefuseBOM(const uchar*  p_pointer
-                 ,BOMType&      p_type
-                 ,unsigned int& p_skip)
+                  ,Encoding&      p_type
+                  ,unsigned int& p_skip)
 {
   // Preset nothing
-  p_type = BOMType::BT_NO_BOM;
+  p_type = Encoding::NO_BOM;
   p_skip = 0;
 
   // Get first four characters in the message as integers
@@ -1324,23 +1572,8 @@ WinFile::DefuseBOM(const uchar*  p_pointer
   {
     // Yes BE-BOM in UTF-8
     p_skip = 3;
-    p_type = BOMType::BT_BE_UTF8;
-    return BOMOpenResult::BOR_Bom;
-  }
-  // Check UTF-8 BOM in other Endian 
-  if(c1 == 0xBB || c1 == 0xBF)
-  {
-    // UTF-8 but incompatible. Might work yet!!
-    p_skip = 3;
-    p_type = BOMType::BT_LE_UTF8;
-    return BOMOpenResult::BOR_OpenedIncompatible;
-  }
-  // Check Big-Endian UTF-16
-  if(c1 == 0xFE && c2 == 0xFF)
-  {
-    p_skip = 2;
-    p_type = BOMType::BT_BE_UTF16;
-    return BOMOpenResult::BOR_Bom;
+    p_type = Encoding::UTF8;
+    return BOMOpenResult::BOM;
   }
   // Check Little-Endian UTF-16/UTF32
   if(c1 == 0xFF && c2 == 0xFE)
@@ -1348,19 +1581,26 @@ WinFile::DefuseBOM(const uchar*  p_pointer
     if(c3 == 0x0 && c4 == 0x0)
     {
       p_skip = 4;
-      p_type = BOMType::BT_LE_UTF32;
-      return BOMOpenResult::BOR_OpenedIncompatible;
+      p_type = Encoding::LE_UTF32;
+      return BOMOpenResult::BOM;
     }
     p_skip = 2;
-    p_type = BOMType::BT_LE_UTF16;
-    return BOMOpenResult::BOR_OpenedIncompatible;
+    p_type = Encoding::LE_UTF16;
+    return BOMOpenResult::BOM;
+  }
+  // Check Big-Endian UTF-16
+  if(c1 == 0xFE && c2 == 0xFF)
+  {
+    p_skip = 2;
+    p_type = Encoding::BE_UTF16;
+    return BOMOpenResult::BOM;
   }
   // Check Big-Endian UTF-32
   if(c1 == 0 && c2 == 0 && c3 == 0xFE && c4 == 0xFF)
   {
     p_skip = 4;
-    p_type = BOMType::BT_BE_UTF32;
-    return BOMOpenResult::BOR_OpenedIncompatible;
+    p_type = Encoding::BE_UTF32;
+    return BOMOpenResult::Incompatible;
   }
   // Check for UTF-7 special case
   if(c1 == 0x2B && c2 == 0x2F && c3 == 0x76)
@@ -1370,47 +1610,47 @@ WinFile::DefuseBOM(const uchar*  p_pointer
       // Application still has to process lower 2 bits 
       // of the 4th character. Re-spool to that char.
       p_skip = 3;
-      p_type = BOMType::BT_BE_UTF7;
-      return BOMOpenResult::BOR_OpenedIncompatible;
+      p_type = Encoding::UTF7;
+      return BOMOpenResult::Incompatible;
     }
   }
   // Check for UTF-1 special case
   if(c1 == 0xF7 && c2 == 0x64 && c3 == 0x4C)
   {
     p_skip = 3;
-    p_type = BOMType::BT_BE_UTF1;
-    return BOMOpenResult::BOR_OpenedIncompatible;
+    p_type = Encoding::UTF1;
+    return BOMOpenResult::Incompatible;
   }
   // Check for UTF-EBCDIC IBM set
   if(c1 == 0xDD && c2 == 0x73 && c3 == 0x66 && c4 == 0x73)
   {
     p_skip = 4;
-    p_type = BOMType::BT_UTF_EBCDIC;
-    return BOMOpenResult::BOR_OpenedIncompatible;
+    p_type = Encoding::UTF_EBCDIC;
+    return BOMOpenResult::Incompatible;
   }
   // Check for CSCU 
   if(c1 == 0x0E && c2 == 0xFE && c3 == 0xFF)
   {
     p_skip = 3;
-    p_type = BOMType::BT_BE_CSCU;
-    return BOMOpenResult::BOR_OpenedIncompatible;
+    p_type = Encoding::SCSU;
+    return BOMOpenResult::Incompatible;
   }
   // Check for BOCU-1
   if(c1 == 0xFB && c2 == 0xEE && c3 == 0x28)
   {
     p_skip = 3;
-    p_type = BOMType::BT_BOCU_1;
-    return BOMOpenResult::BOR_OpenedIncompatible;
+    p_type = Encoding::BOCU_1;
+    return BOMOpenResult::Incompatible;
   }
   // Check GB-18030
   if(c1 == 0x84 && c2 == 0x31 && c3 == 0x95 && c4 == 0x33)
   {
     p_skip = 4;
-    p_type = BOMType::BT_GB_18030;
-    return BOMOpenResult::BOR_OpenedIncompatible;
+    p_type = Encoding::GB_18030;
+    return BOMOpenResult::Incompatible;
   }
   // NOT A BOM !!
-  return BOMOpenResult::BOR_NoBom;
+  return BOMOpenResult::NoEncoding;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1421,7 +1661,7 @@ WinFile::DefuseBOM(const uchar*  p_pointer
 
 // Set the filename, but only if the file was not (yet) opened
 bool
-WinFile::SetFilename(string p_filename)
+WinFile::SetFilename(CString p_filename)
 {
   if(m_file == nullptr)
   {
@@ -1434,7 +1674,7 @@ WinFile::SetFilename(string p_filename)
 // Get a filename in a 'special' Windows folder
 // p_folder parameter is one of the many CSIDL_* folder names
 bool
-WinFile::SetFilenameInFolder(int p_folder,string p_filename)
+WinFile::SetFilenameInFolder(int p_folder,CString p_filename)
 {
   // Check if file was already opened
   if(m_file)
@@ -1450,7 +1690,7 @@ WinFile::SetFilenameInFolder(int p_folder,string p_filename)
   IShellFolder* psfParent    = nullptr;   // A pointer to the parent folder object's IShellFolder interface.
   LPITEMIDLIST  pidlItem     = nullptr;   // The item's PIDL.
   LPITEMIDLIST  pidlRelative = nullptr;   // The item's PIDL relative to the parent folder.
-  CHAR          special[MAX_PATH];        // The path for Favorites.
+  TCHAR         special[MAX_PATH];        // The path for Favorites.
   STRRET        strings;                  // The structure for strings returned from IShellFolder.
   bool          result = false;           // Result of the directory search
 
@@ -1495,7 +1735,7 @@ WinFile::SetFilenameInFolder(int p_folder,string p_filename)
   }
   pShellMalloc->Release();
 
-  m_filename = special + std::string("\\") + p_filename;
+  m_filename = special + CString("\\") + p_filename;
   return result;
 }
 
@@ -1537,9 +1777,9 @@ WinFile::SetFileAttribute(FAttributes p_attribute, bool p_set)
     }
     m_error = ::GetLastError();
   }
-  else if (!m_filename.empty())
+  else if (!m_filename.IsEmpty())
   {
-    DWORD attrib = ::GetFileAttributes(m_filename.c_str());
+    DWORD attrib = ::GetFileAttributes(m_filename.GetString());
     if (attrib != INVALID_FILE_ATTRIBUTES)
     {
       if(p_set)
@@ -1550,7 +1790,7 @@ WinFile::SetFileAttribute(FAttributes p_attribute, bool p_set)
       {
         attrib &= ~p_attribute;
       }
-      if(::SetFileAttributes(m_filename.c_str(), attrib))
+      if(::SetFileAttributes(m_filename.GetString(), attrib))
       {
         return true;
       }
@@ -1694,6 +1934,12 @@ WinFile::SetFileTimeAccessed(SYSTEMTIME& p_accessed)
   return false;
 }
 
+void
+WinFile::SetEncoding(Encoding p_encoding)
+{
+  m_encoding = p_encoding;
+}
+
 // NOT thread safe: Must be set for the total process!
 // And can only be set in multiples of 4K up to 1024K
 bool
@@ -1739,7 +1985,7 @@ WinFile::ConvertTimetToFileTime(time_t p_time)
 //////////////////////////////////////////////////////////////////////////
 
 // Getting the name of the file
-string
+CString
 WinFile::GetFilename()
 {
   return m_filename;
@@ -1766,11 +2012,11 @@ WinFile::GetLastError()
   return m_error;
 }
 
-string
+CString
 WinFile::GetLastErrorString()
 {
   // This will be the resulting message
-  string message;
+  CString message;
 
   // This is the "errno" error number
   DWORD dwError = m_error;
@@ -1848,11 +2094,11 @@ WinFile::GetFileSize()
     m_error = ::GetLastError();
   }
   // Try by filename
-  else if(!m_filename.empty())
+  else if(!m_filename.IsEmpty())
   {
     WIN32_FILE_ATTRIBUTE_DATA data;
     memset(&data,0,sizeof(data));
-    if(::GetFileAttributesEx(m_filename.c_str(),GetFileExInfoStandard,&data))
+    if(::GetFileAttributesEx(m_filename.GetString(),GetFileExInfoStandard,&data))
     {
       LARGE_INTEGER size = { 0,0 };
       size.LowPart  = data.nFileSizeLow;
@@ -1882,19 +2128,19 @@ WinFile::GetSharedMemorySize()
   return 0;
 }
 
-string
+CString
 WinFile::GetNamePercentEncoded()
 {
-  string      encoded;
-  bool        queryValue = false;
-  static char unsafeString[]   = " \"<>#{}|^~[]`";
-  static char reservedString[] = "$&/;?@-!*()'";
+  CString      encoded;
+  bool         queryValue = false;
+  static TCHAR unsafeString[]   = _T(" \"<>#{}|^~[]`");
+  static TCHAR reservedString[] = _T("$&/;?@-!*()'");
 
   // Re-encode the string. 
   // Watch out: strange code ahead!
-  for(size_t ind = 0;ind < m_filename.size(); ++ind)
+  for(int ind = 0;ind < m_filename.GetLength(); ++ind)
   {
-    unsigned char ch = m_filename[ind];
+    TCHAR ch = m_filename[ind];
     if(ch == '?')
     {
       queryValue = true;
@@ -1903,13 +2149,13 @@ WinFile::GetNamePercentEncoded()
     {
       encoded += '+';
     }
-    else if(strchr(unsafeString,ch) ||                    // " \"<>#{}|\\^~[]`"     -> All strings
-           (queryValue && strchr(reservedString,ch)) ||   // "$&+,./:;=?@-!*()'"    -> In query parameter value strings
-           (ch < 0x20) ||                                 // 7BITS ASCII Control characters
-           (ch > 0x7F) )                                  // Converted UTF-8 characters
+    else if(_tcsrchr(unsafeString,ch) ||                    // " \"<>#{}|\\^~[]`"     -> All strings
+           (queryValue && _tcsrchr(reservedString,ch)) ||   // "$&+,./:;=?@-!*()'"    -> In query parameter value strings
+           (ch < 0x20) ||                                   // 7BITS ASCII Control characters
+           (ch > 0x7F) )                                    // Converted UTF-8 characters
     {
-      char extra[3];
-      sprintf_s(extra,3,"%%%2.2X",(int)ch);
+      TCHAR extra[3];
+      _stprintf_s(extra,3,_T("%%%2.2X"),(int)ch);
       encoded += extra;
     }
     else
@@ -1920,46 +2166,46 @@ WinFile::GetNamePercentEncoded()
   return encoded;
 }
 
-string
+CString
 WinFile::GetFilenamePartDirectory()
 {
-  string drive,directory,filename,extension;
+  CString drive,directory,filename,extension;
   FilenameParts(m_filename,drive,directory,filename,extension);
 
   return directory;
 }
 
-string    
+CString    
 WinFile::GetFilenamePartFilename()
 {
-  string drive,directory,filename,extension;
+  CString drive,directory,filename,extension;
   FilenameParts(m_filename,drive,directory,filename,extension);
 
   return filename + extension;
 }
 
-string
+CString
 WinFile::GetFilenamePartBasename()
 {
-  string drive,directory,filename,extension;
+  CString drive,directory,filename,extension;
   FilenameParts(m_filename,drive,directory,filename,extension);
 
   return filename;
 }
 
-string    
+CString    
 WinFile::GetFilenamePartExtension()
 {
-  string drive,directory,filename,extension;
+  CString drive,directory,filename,extension;
   FilenameParts(m_filename,drive,directory,filename,extension);
 
   return extension;
 }
 
-string 
+CString 
 WinFile::GetFilenamePartDrive()
 {
-  string drive,directory,filename,extension;
+  CString drive,directory,filename,extension;
   FilenameParts(m_filename,drive,directory,filename,extension);
 
   return drive;
@@ -2106,9 +2352,9 @@ WinFile::GetFileAttribute(FAttributes p_attribute)
     }
     m_error = ::GetLastError();
   }
-  else if(!m_filename.empty())
+  else if(!m_filename.IsEmpty())
   {
-    DWORD attrib = ::GetFileAttributes(m_filename.c_str());
+    DWORD attrib = ::GetFileAttributes(m_filename.GetString());
     if(attrib != INVALID_FILE_ATTRIBUTES)
     {
       return (attrib & p_attribute) != 0;
@@ -2173,52 +2419,58 @@ WinFile::GetIsDirectory()
   return GetFileAttribute(FAttributes::attrib_directory);
 }
 
+Encoding
+WinFile::GetEncoding()
+{
+  return m_encoding;
+}
+
 bool
-WinFile::SetFilenameByDialog(HWND   p_parent      // Parent window (if any)
-                            ,bool   p_open        // true = Open/New, false = SaveAs
-                            ,string p_title       // Title of the dialog
-                            ,string p_defext      // Default extension
-                            ,string p_filename    // Default first file
-                            ,int    p_flags       // Default flags
-                            ,string p_filter      // Filter for extensions
-                            ,string p_direct)     // Directory to start in
+WinFile::SetFilenameByDialog(HWND    p_parent      // Parent window (if any)
+                            ,bool    p_open        // true = Open/New, false = SaveAs
+                            ,CString p_title       // Title of the dialog
+                            ,CString p_defext      // Default extension
+                            ,CString p_filename    // Default first file
+                            ,int     p_flags       // Default flags
+                            ,CString p_filter      // Filter for extensions
+                            ,CString p_direct)     // Directory to start in
 {
   // Reset error
   m_error = 0;
   
   // Open filename structure
   OPENFILENAME ofn;
-  char    original[MAX_PATH + 1];
-  char    filename[MAX_PATH + 1];
-  string  filter;
+  TCHAR   original[MAX_PATH + 1];
+  TCHAR   filename[MAX_PATH + 1];
+  CString filter;
 
-  if (p_filter.empty())
+  if(p_filter.IsEmpty())
   {
-    filter = "All files (*.*)|*.*|";
+    filter = _T("All files (*.*)|*.*|");
   }
   else filter = p_filter;
 
   // Register original CWD (Current Working Directory)
   GetCurrentDirectory(MAX_PATH,original);
-  if(!p_direct.empty())
+  if(!p_direct.IsEmpty())
   {
     // Change to starting directory // VISTA
-    SetCurrentDirectory(p_direct.c_str());
+    SetCurrentDirectory(p_direct.GetString());
   }
 
   // Check sizes for OPENFILENAME
-  if(  filter.size() > 1024) filter  .resize(1024);
-  if(p_defext.size() >  100) p_defext.resize(100);
-  if( p_title.size() >  100) p_title .resize(100);
+  if(  filter.GetLength() > 1024) filter   = filter  .Left(1024);
+  if(p_defext.GetLength() >  100) p_defext = p_defext.Left(100);
+  if( p_title.GetLength() >  100) p_title  = p_title .Left(100);
 
   // Prepare the filename buffer: size for a new name!
-  strncpy_s(filename,MAX_PATH,p_filename.c_str(),MAX_PATH);
+  _tcsncpy_s(filename,MAX_PATH,p_filename.GetString(),MAX_PATH);
 
   // Prepare the filter
-  filter += "||";
-  for(int index = 0; index < filter.size(); ++index)
+  filter += _T("||");
+  for(int index = 0; index < filter.GetLength(); ++index)
   {
-    if(filter[index] == '|') filter[index] = 0;
+    if(filter[index] == _T('|')) filter.SetAt(index,0);
   }
 
   // Fill in the filename structure
@@ -2228,10 +2480,10 @@ WinFile::SetFilenameByDialog(HWND   p_parent      // Parent window (if any)
   ofn.lStructSize       = sizeof(OPENFILENAME);
   ofn.hwndOwner         = p_parent;
   ofn.hInstance         = (HINSTANCE)GetWindowLongPtr(p_parent,GWLP_HINSTANCE);
-  ofn.lpstrFile         = (LPSTR)filename;
-  ofn.lpstrDefExt       = (LPSTR)p_defext.c_str();
-  ofn.lpstrTitle        = (LPSTR)p_title.c_str();
-  ofn.lpstrFilter       = (LPSTR)filter.c_str();
+  ofn.lpstrFile         = (LPTSTR)filename;
+  ofn.lpstrDefExt       = (LPTSTR)p_defext.GetString();
+  ofn.lpstrTitle        = (LPTSTR)p_title.GetString();
+  ofn.lpstrFilter       = (LPTSTR)filter.GetString();
   ofn.Flags             = p_flags;
   ofn.nFilterIndex      = 1;    // Use lpstrFilter
   ofn.nMaxFile          = MAX_PATH;
@@ -2239,7 +2491,7 @@ WinFile::SetFilenameByDialog(HWND   p_parent      // Parent window (if any)
   ofn.nMaxCustFilter    = 0;
   ofn.lpstrFileTitle    = nullptr;
   ofn.nMaxFileTitle     = 0;
-  ofn.lpstrInitialDir   = (LPCSTR)p_direct.c_str();
+  ofn.lpstrInitialDir   = (LPCTSTR)p_direct.GetString();
   ofn.nFileOffset       = 0;
   ofn.lCustData         = 0;
   ofn.lpfnHook          = nullptr;
@@ -2292,13 +2544,13 @@ WinFile::operator==(const WinFile& p_other)
     return false;
   }
   // If both names empty, than both are NIL and thus equal
-  if(m_filename.empty() && p_other.m_filename.empty())
+  if(m_filename.IsEmpty() && p_other.m_filename.IsEmpty())
   {
     return true;
   }
   // If both names are equal
   // files are equal: non opened, pointing to the same file name
-  return _stricmp(m_filename.c_str(), p_other.m_filename.c_str()) == 0;
+  return m_filename.CompareNoCase(p_other.m_filename) == 0;
 }
 
 bool
@@ -2334,74 +2586,74 @@ WinFile::operator=(const WinFile& p_other)
   return *this;
 }
 
-string
-WinFile::LegalDirectoryName(string p_name,bool p_extensionAllowed /*= true*/)
+CString
+WinFile::LegalDirectoryName(CString p_name,bool p_extensionAllowed /*= true*/)
 {
   // Check on non-empty
-  if(p_name.empty())
+  if(p_name.IsEmpty())
   {
-    return "NewDirectory";
+    return _T("NewDirectory");
   }
 
-  string name(p_name);
-  const char  forbidden_all[] = "<>:\"/\\|?*";
-  const char  forbidden_ext[] = "<>:\"/\\|?*.";
-  const char* reserved[] =
+  CString name(p_name);
+  const TCHAR  forbidden_all[] = _T("<>:\"/\\|?*");
+  const TCHAR  forbidden_ext[] = _T("<>:\"/\\|?*.");
+  const TCHAR* reserved[] =
   {
-    "CON", "PRN", "AUX", "NUL",
-    "COM1","COM2","COM3","COM4","COM5","COM6","COM7","COM8","COM9",
-    "LPT1","LPT2","LPT3","LPT4","LPT5","LPT6","LPT7","LPT8","LPT9"
+    _T("CON"), _T("PRN"), _T("AUX"), _T("NUL"),
+    _T("COM1"),_T("COM2"),_T("COM3"),_T("COM4"),_T("COM5"),_T("COM6"),_T("COM7"),_T("COM8"),_T("COM9"),
+    _T("LPT1"),_T("LPT2"),_T("LPT3"),_T("LPT4"),_T("LPT5"),_T("LPT6"),_T("LPT7"),_T("LPT8"),_T("LPT9")
   };
 
   // Use either one of these
-  const char* forbidden = p_extensionAllowed ? forbidden_all : forbidden_ext;
+  const TCHAR* forbidden = p_extensionAllowed ? forbidden_all : forbidden_ext;
 
   // Replace forbidden characters by an '_'
-  for(std::string::iterator it = name.begin();it != name.end();++it)
+  for(int index = 0;index < name.GetLength();++index)
   {
     // Replace interpunction
-    if(strchr(forbidden,*it) != nullptr)
+    if(_tcsrchr(forbidden,name.GetAt(index)) != nullptr)
     {
-      *it = '_';
+      name.SetAt(index,'_');
     }
     // Replace non-printable characters
-    if(*it < ' ')
+    if(name.GetAt(index) < ' ')
     {
-      *it = '=';
+      name.SetAt(index,'=');
     }
   }
 
   // Construct uppercase name
-  string upper(name);
-  std::transform(upper.begin(),upper.end(),upper.begin(),::toupper);
+  CString upper(name);
+  upper.MakeUpper();
 
   // Scan for reserved names
   for(unsigned index = 0;index < (sizeof(reserved) / sizeof(const char*)); ++index)
   {
     // Direct transformation of the reserved name
-    if(strcmp(reserved[index],upper.c_str()) == 0)
+    if(upper.Compare(reserved[index]) == 0)
     {
-      name = "Directory_" + name;
+      name = _T("Directory_") + name;
       break;
     }
     // No extension allowed after a reserved name (e.g. "LPT3.txt")
-    size_t pos = upper.find(reserved[index]);
-    if(pos == 0 && name.size() > strlen(reserved[index]))
+    int pos = upper.Find(reserved[index]);
+    if(pos == 0 && name.GetLength() > _tcslen(reserved[index]))
     {
-      pos += strlen(reserved[index]);
+      pos += (int)_tcslen(reserved[index]);
       if(name[pos] == '.')
       {
-        name[pos] = '_';
+        name.SetAt(pos,'_');
         break;
       }
     }
   }
 
   // Check on the ending on a space or dot
-  char ch = name.back();
-  if(ch == '.' || ch == ' ')
+  CString ch = name.Right(1);
+  if(ch == _T(".") || ch == _T(" "))
   {
-    name.pop_back();
+    name = name.Left(name.GetLength() - 1);
   }
 
   // Legal directory name
@@ -2415,15 +2667,19 @@ WinFile::LegalDirectoryName(string p_name,bool p_extensionAllowed /*= true*/)
 //////////////////////////////////////////////////////////////////////////
 
 void
-WinFile::FilenameParts(string p_fullpath,string& p_drive,string& p_directory,string& p_filename,string& p_extension)
+WinFile::FilenameParts(CString  p_fullpath
+                      ,CString& p_drive
+                      ,CString& p_directory
+                      ,CString& p_filename
+                      ,CString& p_extension)
 {
-  char drive [_MAX_DRIVE + 1];
-  char direct[_MAX_DIR   + 1];
-  char fname [_MAX_FNAME + 1];
-  char extens[_MAX_EXT   + 1];
+  TCHAR drive [_MAX_DRIVE + 1];
+  TCHAR direct[_MAX_DIR   + 1];
+  TCHAR fname [_MAX_FNAME + 1];
+  TCHAR extens[_MAX_EXT   + 1];
 
   p_fullpath = StripFileProtocol(p_fullpath);
-  _splitpath_s(p_fullpath.c_str(),drive,direct,fname,extens);
+  _tsplitpath_s(p_fullpath.GetString(),drive,direct,fname,extens);
   p_drive     = drive;
   p_directory = direct;
   p_filename  = fname;
@@ -2433,21 +2689,21 @@ WinFile::FilenameParts(string p_fullpath,string& p_drive,string& p_directory,str
 // Generic strip protocol from URL to form OS filenames
 // "file:///c|/Program%20Files/Program%23name/file%25name.exe" =>
 // "c:\Program Files\Program#name\file%name.exe"
-string
-WinFile::StripFileProtocol(string p_fileref)
+CString
+WinFile::StripFileProtocol(CString p_fileref)
 {
-  if(p_fileref.size() > 8)
+  if(p_fileref.GetLength() > 8)
   {
-    if(_stricmp(p_fileref.substr(0,8).c_str(),"file:///") == 0)
+    if(_tcsicmp(p_fileref.Left(8),_T("file:///")) == 0)
     {
-      p_fileref = &(p_fileref[8]);
+      p_fileref = p_fileref.Mid(8);
     }
   }
   // Create a filename separator char name
-  for(size_t index = 0; index < p_fileref.size(); ++index)
+  for(int index = 0; index < p_fileref.GetLength(); ++index)
   {
-    if(p_fileref[index] == '/') p_fileref[index] = '\\';
-    if(p_fileref[index] == '|') p_fileref[index] = ':';
+    if(p_fileref[index] == '/') p_fileref.SetAt(index,'\\');
+    if(p_fileref[index] == '|') p_fileref.SetAt(index,':');
   }
 
   // Resolve the '%' chars in the filename
@@ -2458,18 +2714,18 @@ WinFile::StripFileProtocol(string p_fileref)
 // Special optimized function to resolve %5C -> '\' in pathnames
 // Returns number of chars replaced
 int
-WinFile::ResolveSpecialChars(string& p_value)
+WinFile::ResolveSpecialChars(CString& p_value)
 {
   int total = 0;
 
-  size_t pos = p_value.find('%');
+  int pos = p_value.Find('%');
   while (pos >= 0)
   {
     ++total;
     int num = 0;
-    string hexstring = p_value.substr(pos+1,2);
-    hexstring[0] = toupper(hexstring[0]);
-    hexstring[1] = toupper(hexstring[1]);
+    CString hexstring = p_value.Mid(pos+1,2);
+    hexstring.SetAt(0,toupper(hexstring[0]));
+    hexstring.SetAt(1,toupper(hexstring[1]));
 
     if(isdigit(hexstring[0]))
     {
@@ -2488,38 +2744,38 @@ WinFile::ResolveSpecialChars(string& p_value)
     {
       num += hexstring[1] - 'A' + 10;
     }
-    p_value[pos] = (char)num;
-    p_value = p_value.substr(0,pos+1) + p_value.substr(pos+3);
-    pos = p_value.find('%');
+    p_value.SetAt(pos,(char)num);
+    p_value = p_value.Left(pos+1) + p_value.Mid(pos+3);
+    pos = p_value.Find('%');
   }
   return total;
 }
 
 // Getting the first (base) directory
-string
-WinFile::GetBaseDirectory(string& p_path)
+CString
+WinFile::GetBaseDirectory(CString& p_path)
 {
-  string result;
+  CString result;
 
   // Strip of an extra path separator
   while (p_path[0] == '\\')
   {
-    p_path = p_path.substr(1);
+    p_path = p_path.Mid(1);
   }
 
   // Find first separator
-  size_t pos = p_path.find('\\');
+  int pos = p_path.Find('\\');
   if (pos >= 0)
   {
     // Return first subdirectory
-    result = p_path.substr(0,pos);
-    p_path = p_path.substr(pos);
+    result = p_path.Left(pos);
+    p_path = p_path.Mid(pos);
   }
   else
   {
     // Last directory in the line
     result = p_path;
-    p_path.clear();
+    p_path.Empty();
   }
   return result;
 }
@@ -2587,6 +2843,40 @@ WinFile::IsTextUnicodeUTF8(const uchar* p_pointer,size_t p_length)
   return true;
 }
 
+#ifdef UNICODE
+CString
+WinFile::ExplodeString(const std::string& p_string,unsigned p_codepage)
+{
+  // Convert UTF-8 -> UTF-16
+  // Convert MBCD  -> UTF-16
+  // Getting the needed buffer space (in codepoints! Not bytes!!)
+  int length = MultiByteToWideChar(p_codepage,MB_PRECOMPOSED,p_string.c_str(),-1,NULL,NULL);
+  uchar* buffer = new uchar[length * 2];
+  // Doing the 'real' conversion
+  MultiByteToWideChar(p_codepage,MB_PRECOMPOSED,p_string.c_str(),-1,reinterpret_cast<LPWSTR>(buffer),length);
+  CString result;
+  LPCTSTR resbuf = result.GetBufferSetLength(length);
+  memcpy((void*) resbuf,buffer,length * 2);
+  result.ReleaseBuffer();
+  delete[] buffer;
+  return result;
+}
+
+std::string 
+WinFile::ImplodeString(const CString& p_string,unsigned p_codepage)
+{
+  int clength = 0;
+  // Getting the length of the translation buffer first
+  clength = ::WideCharToMultiByte(p_codepage,0,(LPCWSTR) p_string.GetString(),-1,NULL,0,NULL,NULL);
+  char* buffer = new char[clength + 1];
+  clength = ::WideCharToMultiByte(p_codepage,0,(LPCWSTR) p_string.GetString(),clength,(LPSTR) buffer,clength,NULL,NULL);
+  buffer[clength] = 0;
+  std::string result(buffer);
+  delete[] buffer;
+  return result;
+}
+#endif
+
 //////////////////////////////////////////////////////////////////////////
 //
 // PAGE BUFFER:
@@ -2623,13 +2913,16 @@ WinFile::PageBufferFree()
 
 // Reading one (1) character from the file buffer
 // Prerequisite: the file must be opened
-int
+uchar
 WinFile::PageBufferRead()
 {
+  bool scanBom = false;
+
   // Make sure we have a page buffer
   if(!m_pageBuffer)
   {
     PageBuffer();
+    scanBom = true;
   }
   // If pagebuffer is empty 
   // or we are finished reading the buffer
@@ -2652,7 +2945,7 @@ WinFile::PageBufferRead()
       m_pagePointer = m_pageBuffer;
 
       // if read-and-write: read in first page and reset FPOS
-      if (PageBufferReadForeward() == false)
+      if (PageBufferReadForeward(scanBom) == false)
       {
         return false;
       }
@@ -2674,22 +2967,41 @@ WinFile::PageBufferRead()
       }
       m_pagePointer = m_pageBuffer;
       m_pageTop     = (uchar*) ((size_t)m_pageBuffer + (size_t)size);
+
+      // First buffer read in: scan for encoding
+      if(scanBom)
+      {
+        ScanBomInFirstPageBuffer();
+      }
     }
   }
-  return (int)(*m_pagePointer++);
+  return *m_pagePointer++;
+}
+
+// Scan for a valid BYTE-ORDER-MARK: UTF-8 or UTF-16 Big Endian
+void
+WinFile::ScanBomInFirstPageBuffer()
+{
+  Encoding type;
+  unsigned skip = 0;
+  if(DefuseBOM(m_pagePointer,type,skip) == BOMOpenResult::BOM)
+  {
+    m_encoding     = type;
+    m_pagePointer += skip;
+  }
 }
 
 // Writing one (1) character to the file buffer
 // Prerequisite: the file must be opened
 bool
-WinFile::PageBufferWrite(int ch)
+WinFile::PageBufferWrite(uchar ch)
 {
   // Make sure we have a page buffer
   if(!m_pageBuffer)
   {
     PageBuffer();
 
-    if (PageBufferReadForeward() == false)
+    if (PageBufferReadForeward(false) == false)
     {
       return false;
     }
@@ -2709,18 +3021,18 @@ WinFile::PageBufferWrite(int ch)
     m_pagePointer = m_pageBuffer;
 
     // if read-and-write: read in first page and reset FPOS
-    if(PageBufferReadForeward() == false)
+    if(PageBufferReadForeward(false) == false)
     {
       return false;
     }
   }
   // Now write our character for sure
-  *m_pagePointer++ = (uchar)ch;
+  *m_pagePointer++ = ch;
   return true;
 }
 
 bool
-WinFile::PageBufferReadForeward()
+WinFile::PageBufferReadForeward(bool p_scanBom)
 {
   // if read-and-write: read in first page and reset FPOS
   if (m_openMode & FFlag::open_read)
@@ -2738,6 +3050,11 @@ WinFile::PageBufferReadForeward()
       {
         return false;
       }
+    }
+    // First buffer read in: scan for encoding
+    if(p_scanBom && (m_openMode & FFlag::open_trans_text))
+    {
+      ScanBomInFirstPageBuffer();
     }
     return true;
   }

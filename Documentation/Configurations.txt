@@ -1,0 +1,22 @@
+UNICODE CONFIGURATIONS FOR WinFile
+==================================
+
+                                    |    MBCS Configuration        |    Unicode Configuration     |
+                                    |                              |                              |
+------------------------------------ ------------------------------ ------------------------------
+ANSI text file (no BOM)             |    Legacy configuration      |  Read:OK Write:OK            |
+Unix/Linux                          |    Read:OK Write:OK          |                              |
+------------------------------------ ------------------------------ ------------------------------
+Text file in UTF-8 (no BOM)         |    Read:OK Write:OK          |  Read:OK Write:OK            |
+                                    |                              |                              |
+------------------------------------ ------------------------------ ------------------------------
+Text file UTF-8 with BOM            |    Read:OK Write:OK          |  Read:OK Write:OK            |
+                                    |                              |                              |
+------------------------------------ ------------------------------ ------------------------------
+Text file UTF-16 LE with BOM        |    Read:OK Write:OK          |  Read:OK Write:OK            |
+MS-Windows                          |                              |                              |
+------------------------------------ ------------------------------ ------------------------------
+Text file UTF-16 BE with BOM        |    Read:OK Write:OK          |  Read:OK Write:OK            |
+Mac OS                              |                              |                              |
+------------------------------------ ------------------------------ ------------------------------
+

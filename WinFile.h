@@ -25,10 +25,11 @@
 //
 #pragma once
 #include <windows.h>
+#include <atlstr.h>
 #include <string>
 
-// Using the standard STL string
-using std::string;
+// MS-Windows codepage numbers for translation of text files
+#define CODEPAGE_UTF8   65001
 
 typedef unsigned char uchar;
 
@@ -132,29 +133,28 @@ FMove;
 // Result of the defusion process
 enum class BOMOpenResult
 {
-  BOR_NoString
- ,BOR_NoBom
- ,BOR_Bom
- ,BOR_OpenedIncompatible
+  NoString      // Empty input
+ ,NoEncoding    // No encoding Byte-order-mark found
+ ,BOM           // Byte-Order-Mark
+ ,Incompatible  // Incompatible (not supported) encoding
 };
 
 // Type of BOM found to defuse
 // As found on: https://en.wikipedia.org/wiki/Byte_order_mark
-enum class BOMType
+enum class Encoding
 {
-  BT_NO_BOM       // No BOM found
- ,BT_BE_UTF1      // Big-Endian UTF (not used any more)
- ,BT_BE_UTF7      // Big-Endian UTF 7 bits
- ,BT_BE_UTF8      // Big-Endian UTF 8 bits (General WEB standard)
- ,BT_BE_UTF16     // Big-Endian UTF 16 bits (MS-Windows!)
- ,BT_BE_UTF32     // Big-Endian UTF 32 bits
- ,BT_BE_CSCU      // Big-Endian CSCU
- ,BT_LE_UTF8      // Little-Endian UTF 8 bits
- ,BT_LE_UTF16     // Little-Endian UTF 16 bits (Apple MacIntosh)
- ,BT_LE_UTF32     // Little-Endian UTF 32 bits
- ,BT_UTF_EBCDIC   // IBM EBCDIC Unicode
- ,BT_BOCU_1       // Binary Ordered Compressed Unicode
- ,BT_GB_18030     // Chinese government: Guojia Biazhun coding standard 18030
+  NO_BOM       // No BOM found
+ ,UTF8         // UTF 8 bits (General WEB standard)
+ ,LE_UTF16     // Little-Endian UTF 16 bits (Intel & MS-Windows!)
+ ,LE_UTF32     // Little-Endian UTF 32 bits
+ ,BE_UTF16     // Big-Endian UTF 16 bits (Motorola & Apple MacIntosh)
+ ,BE_UTF32     // Big-Endian UTF 32 bits
+ ,UTF7         // UTF 7 bits (Obsolete variable length encoding)
+ ,UTF1         // UTF-1 (Variable width encoding, not searchable!)
+ ,UTF_EBCDIC   // IBM EBCDIC Unicode
+ ,SCSU         // Standard Compression Code for Unicode
+ ,BOCU_1       // Binary Ordered Compressed Unicode
+ ,GB_18030     // Chinese government: Guojia Biazhun coding standard 18030
 };
 
 //////////////////////////////////////////////////////////////////////////
@@ -169,14 +169,14 @@ public:
   // CTOR 
   WinFile();
   // CTOR from a filename
-  WinFile(string p_filename);
+  WinFile(CString p_filename);
   // CTOR from another file pointer
   WinFile(WinFile& p_other);
   // DTOR
   ~WinFile();
 
   // OPERATIONS ON THE FILE SYSTEM
-  bool      Open(DWORD p_flags = winfile_read,FAttributes p_attribs = FAttributes::attrib_none);
+  bool      Open(DWORD p_flags = winfile_read,FAttributes p_attribs = FAttributes::attrib_none,Encoding p_encoding = Encoding::NO_BOM);
   bool      Close(bool p_flush = false);
   bool      Create(FAttributes p_attribs = FAttributes::attrib_normal);
   bool      CreateDirectory();
@@ -185,16 +185,16 @@ public:
   bool      DeleteFile();
   unsigned  DeleteDirectory(bool p_recursive = false);
   bool      DeleteToTrashcan(bool p_show = false, bool p_confirm = false);
-  bool      CopyFile(string p_destination,FCopy p_how = winfile_copy);
-  bool      MoveFile(string p_destination,FMove p_how = winfile_move);
-  bool      CreateTempFileName(string p_pattern, string p_extension = "");
+  bool      CopyFile(CString p_destination,FCopy p_how = winfile_copy);
+  bool      MoveFile(CString p_destination,FMove p_how = winfile_move);
+  bool      CreateTempFileName(CString p_pattern,CString p_extension = "");
   bool      GrantFullAccess();
   void      ForgetFile(); // BEWARE!
 
   // OPERATIONS TO READ AND WRITE CONTENT
-  bool      Read(string& p_string);
+  bool      Read(CString& p_string);
   bool      Read(void* p_buffer,size_t p_bufsize,int& p_read);
-  bool      Write(const string& p_string);
+  bool      Write(const CString& p_string);
   bool      Write(void* p_buffer,size_t p_bufsize);
   size_t    Position();
   size_t    Position(FSeek p_how,LONGLONG p_position = 0);
@@ -205,13 +205,13 @@ public:
   // Classic STDIO.H like functions
   bool      Gets(uchar* p_buffer,size_t p_size);
   bool      Puts(uchar* p_buffer);
-  int       Getch();
+  uchar     Getch();
   bool      Putch(uchar p_char);
   bool      Ungetch(uchar p_ch);  // only works in conjunction with "Getch()"
 
   // SETTERS
-  bool      SetFilename(string p_filename);
-  bool      SetFilenameInFolder(int p_folder,string p_filename);  // Use CSIDL_* names !
+  bool      SetFilename(CString p_filename);
+  bool      SetFilenameInFolder(int p_folder,CString p_filename);  // Use CSIDL_* names !
   bool      SetFileHandle(HANDLE p_handle);
   bool      SetFileAttribute(FAttributes p_attribute,bool p_set);
   bool      SetHidden(bool p_hidden);
@@ -225,21 +225,22 @@ public:
   bool      SetFileTimeCreated (SYSTEMTIME& p_created);
   bool      SetFileTimeModified(SYSTEMTIME& p_modified);
   bool      SetFileTimeAccessed(SYSTEMTIME& p_accessed);
+  void      SetEncoding(Encoding p_encoding);
 
   // GETTERS
-  string    GetFilename();
+  CString   GetFilename();
   HANDLE    GetFileHandle();
   DWORD     GetOpenFlags();
   int       GetLastError();
-  string    GetLastErrorString();
+  CString   GetLastErrorString();
   size_t    GetFileSize();
   size_t    GetSharedMemorySize();
-  string    GetNamePercentEncoded();
-  string    GetFilenamePartDirectory();
-  string    GetFilenamePartFilename();
-  string    GetFilenamePartBasename();
-  string    GetFilenamePartExtension();
-  string    GetFilenamePartDrive();
+  CString   GetNamePercentEncoded();
+  CString   GetFilenamePartDirectory();
+  CString   GetFilenamePartFilename();
+  CString   GetFilenamePartBasename();
+  CString   GetFilenamePartExtension();
+  CString   GetFilenamePartDrive();
   FILETIME  GetFileTimeCreated();
   FILETIME  GetFileTimeModified();
   FILETIME  GetFileTimeAccessed();
@@ -255,32 +256,33 @@ public:
   bool      GetIsNormal();
   bool      GetIsReadOnly();
   bool      GetIsDirectory();
+  Encoding   GetEncoding();
 
   // FUNCTIONS
 
   // Check for a Byte-Order-Mark (BOM)
-  BOMOpenResult  DefuseBOM(const uchar*  p_pointer            // First gotten string in the file
-                          ,BOMType&      p_type               // Return: type of BOM (if any)
-                          ,unsigned int& p_skip);             // Return: number of chars to skip
+  static BOMOpenResult  DefuseBOM(const uchar*  p_pointer     // First gotten string in the file
+                                 ,Encoding&      p_type        // Return: type of BOM (if any)
+                                 ,unsigned int& p_skip);      // Return: number of chars to skip
   // Check for Unicode UTF-16 in the buffer
-  bool      IsTextUnicodeUTF16(const uchar* p_pointer,size_t p_length);
+  static bool IsTextUnicodeUTF16(const uchar* p_pointer,size_t p_length);
   // Check for Unicode UTF-8 in the buffer
-  bool      IsTextUnicodeUTF8 (const uchar* p_pointer,size_t p_length);
+  static bool IsTextUnicodeUTF8 (const uchar* p_pointer,size_t p_length);
   // Getting the filename from a dialog
   bool      SetFilenameByDialog(HWND     p_parent             // Parent HWND (if any)
                                ,bool     p_open               // true = Open/New, false = SaveAs
-                               ,string   p_title              // Title of the dialog
-                               ,string   p_defext   = ""      // Default extension
-                               ,string   p_filename = ""      // Default first file
+                               ,CString  p_title              // Title of the dialog
+                               ,CString  p_defext   = ""      // Default extension
+                               ,CString  p_filename = ""      // Default first file
                                ,int      p_flags    = 0       // Default flags
-                               ,string   p_filter   = ""      // Filter for extensions
-                               ,string   p_direct   = "");    // Directory to start in
+                               ,CString  p_filter   = ""      // Filter for extensions
+                               ,CString  p_direct   = "");    // Directory to start in
   // Open file as a shared memory segment
-  void*     OpenAsSharedMemory(string   p_name               // Name of the shared memory segment to open
+  void*     OpenAsSharedMemory(CString  p_name               // Name of the shared memory segment to open
                               ,bool     p_local     = true   // Standard on your local session, otherwise global
                               ,bool     p_trycreate = false  // Create with m_filename if not exists
                               ,size_t   p_size      = 0);    // Size of memory if we create it
-  string    LegalDirectoryName(string p_name,bool p_extensionAllowed = true);
+  CString   LegalDirectoryName(CString  p_name,bool p_extensionAllowed = true);
 
   // OPERATORS
 
@@ -298,35 +300,46 @@ public:
 
 private:
   // PRIVATE OPERATIONS
-  void      FilenameParts(string p_fullpath,string& p_drive,string& p_directory,string& p_filename,string& p_extension);
-  string    StripFileProtocol  (string  p_fileref);
-  int       ResolveSpecialChars(string& p_value);
-  string    GetBaseDirectory   (string& p_path);
+  void      FilenameParts(CString p_fullpath,CString& p_drive,CString& p_directory,CString& p_filename,CString& p_extension);
+  CString   StripFileProtocol  (CString  p_fileref);
+  int       ResolveSpecialChars(CString& p_value);
+  CString   GetBaseDirectory   (CString& p_path);
   // Page buffer cache functions
   uchar*    PageBuffer();
   void      PageBufferFree();
-  int       PageBufferRead();
-  bool      PageBufferReadForeward();
-  bool      PageBufferWrite(int ch);
+  uchar     PageBufferRead();
+  bool      PageBufferReadForeward(bool p_scanBom);
+  bool      PageBufferWrite(uchar ch);
   bool      PageBufferFlush();
   bool      PageBufferAdjust(bool p_beginning = false);
-
+  // Resolving UTF-8 and UTF-16 text files
+  void      ScanBomInFirstPageBuffer();
+  bool      WriteEncodingBOM();
+  // Translating UTF-8 / UTF-16-LE and UTF-16-BE in reading and writing
+  CString     TranslateInputBuffer(std::string& p_string);
+  std::string TranslateOutputBuffer(const CString& p_string);
+  void        BlefuscuToLilliput(std::string& p_gulliver);
+#ifdef UNICODE
+  CString     ExplodeString(const std::string& p_string,unsigned p_codepage);
+  std::string ImplodeString(const     CString& p_string,unsigned p_codepage);
+#endif
   // PRIVATE DATA
 
   // The file and open actions
-  string      m_filename;                        // Name of the file (if any)
-  HANDLE      m_file         { nullptr };        // Handle to the OS file
-  DWORD       m_openMode     { FFlag::no_mode }; // How the file was opened
+  CString     m_filename;                           // Name of the file (if any)
+  HANDLE      m_file         { nullptr };           // Handle to the OS file
+  DWORD       m_openMode     { FFlag::no_mode };    // How the file was opened
+  Encoding     m_encoding     { Encoding::NO_BOM}; // Encoding found by BOM
   // Page buffer cache
-  uchar*      m_pageBuffer   { nullptr };        // PB: Text mode page buffer
-  uchar*      m_pagePointer  { nullptr };        // PP: Pointer in the page buffer
-  uchar*      m_pageTop      { nullptr };        // PT: Pointer to the last position in the buffer
+  uchar*      m_pageBuffer   { nullptr };           // PB: Text mode page buffer
+  uchar*      m_pagePointer  { nullptr };           // PP: Pointer in the page buffer
+  uchar*      m_pageTop      { nullptr };           // PT: Pointer to the last position in the buffer
   // Current information
-  int         m_error        { 0 };              // Last encountered error (if any)
-  int         m_ungetch      { 0 };              // Last get character with "Getch"
+  int         m_error        { 0 };                 // Last encountered error (if any)
+  int         m_ungetch      { 0 };                 // Last get character with "Getch"
   // Shared Memory
-  void*       m_sharedMemory { nullptr };        // Pointer in memory (if any)
-  size_t      m_sharedSize   { 0 };              // Size of shared memory segment
+  void*       m_sharedMemory { nullptr };           // Pointer in memory (if any)
+  size_t      m_sharedSize   { 0 };                 // Size of shared memory segment
 };
 
 //////////////////////////////////////////////////////////////////////////

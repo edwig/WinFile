@@ -1,0 +1,6 @@
+TESTFILE ANSI/UTF-8/LE-UTF16/BE-UTF16
+This is a normal regular line of text
+This line is worth € 0.00 (euro's test)
+Achternaam: Génèpêllëtje
+Chattering: pechakkucha
+Cheerfully: uki-uki
