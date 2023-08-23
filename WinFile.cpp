@@ -28,8 +28,10 @@
 #include <fileapi.h>
 #include <handleapi.h>
 #include <shlwapi.h>
+#include <commdlg.h>
 #include <shlobj.h>
 #include <winnt.h>
+#include <shellapi.h>
 #include <AclAPI.h>
 #include <filesystem>
 #include <algorithm>
@@ -1137,6 +1139,30 @@ WinFile::Write(void* p_buffer,size_t p_bufsize)
   return true;
 }
 
+bool
+WinFile::Format(LPCTSTR p_format,...)
+{
+  va_list argList;
+  va_start(argList,p_format);
+  bool result = FormatV(p_format,argList);
+  va_end(argList);
+  return result;
+}
+
+bool
+WinFile::FormatV(LPCTSTR p_format,va_list p_list)
+{
+  // Getting a buffer of the correct length
+  int len = _vsctprintf(p_format,p_list) + 1;
+  PTCHAR buffer = new TCHAR[len];
+  // Formatting the parameters
+  _vstprintf_s(buffer,len,p_format,p_list);
+  // Adding to the string
+  bool result = Write(buffer);
+  delete[] buffer;
+  return result;
+}
+
 // Getting the current file position
 // Returns the file position, or -1 for error
 size_t
@@ -1149,7 +1175,7 @@ WinFile::Position()
   if (m_file == nullptr)
   {
     m_error = ERROR_FILE_NOT_FOUND;
-    return -1;
+    return (size_t) - 1;
   }
 
   // Read files should readjust the current position
@@ -1161,7 +1187,7 @@ WinFile::Position()
   if(::SetFilePointerEx(m_file, move, &pos, FILE_CURRENT) == 0)
   {
     m_error = ::GetLastError();
-    return -1;
+    return (size_t) - 1;
   }
   return (size_t) pos.QuadPart;
 }
@@ -1177,7 +1203,7 @@ WinFile::Position(FSeek p_how,LONGLONG p_position /*= 0*/)
   if (m_file == nullptr)
   {
     m_error = ERROR_FILE_NOT_FOUND;
-    return -1;
+    return (size_t) - 1;
   }
 
   // Check if we where opened for random access, 
@@ -1185,7 +1211,7 @@ WinFile::Position(FSeek p_how,LONGLONG p_position /*= 0*/)
   if((m_openMode & FFlag::open_random_access) == 0)
   {
     m_error = ERROR_INVALID_FUNCTION;
-    return -1;
+    return (size_t) - 1;
   }
 
   if(m_openMode & FFlag::open_write)
@@ -1212,14 +1238,14 @@ WinFile::Position(FSeek p_how,LONGLONG p_position /*= 0*/)
     case FSeek::file_current: method = FILE_CURRENT; break;
     case FSeek::file_end:     method = FILE_END;     break;
     default:                  m_error = ERROR_INVALID_FUNCTION;
-                              return -1;
+                              return (size_t) - 1;
   }
 
   // Perform the file move
   if(::SetFilePointerEx(m_file,move,&pos,method) == 0)
   {
     m_error = ::GetLastError();
-    return -1;
+    return (size_t) - 1;
   }
   PageBufferFree();
 
@@ -1345,7 +1371,7 @@ WinFile::Puts(uchar* p_buffer)
 
   while(*p_buffer)
   {
-    int ch = *p_buffer++;
+    uchar ch = *p_buffer++;
     if(ch == '\n' && (m_openMode & FFlag::open_trans_text))
     {
       if(PageBufferWrite('\r') == false)
@@ -1398,7 +1424,7 @@ WinFile::Getch()
   // If we **DID** have an unget character, return that one
   if(m_ungetch)
   {
-     int ch(m_ungetch);
+     uchar ch(m_ungetch);
      m_ungetch = 0;
      return ch;
   }
@@ -1983,6 +2009,13 @@ WinFile::ConvertTimetToFileTime(time_t p_time)
 // GETTERS
 //
 //////////////////////////////////////////////////////////////////////////
+
+// Are we open?
+bool
+WinFile::GetIsOpen()
+{
+  return m_file != nullptr;
+}
 
 // Getting the name of the file
 CString
@@ -2724,8 +2757,8 @@ WinFile::ResolveSpecialChars(CString& p_value)
     ++total;
     int num = 0;
     CString hexstring = p_value.Mid(pos+1,2);
-    hexstring.SetAt(0,toupper(hexstring[0]));
-    hexstring.SetAt(1,toupper(hexstring[1]));
+    hexstring.SetAt(0,(TCHAR)toupper(hexstring[0]));
+    hexstring.SetAt(1,(TCHAR)toupper(hexstring[1]));
 
     if(isdigit(hexstring[0]))
     {
@@ -2958,12 +2991,12 @@ WinFile::PageBufferRead()
       if(::ReadFile(m_file,m_pageBuffer,(DWORD)PAGESIZE,&size,nullptr) == 0)
       {
         m_error = ::GetLastError();
-        return EOF;
+        return (uchar)EOF;
       }
       // Read-nothing: legal end-of-file
       if(size == 0)
       {
-        return EOF;
+        return (uchar)EOF;
       }
       m_pagePointer = m_pageBuffer;
       m_pageTop     = (uchar*) ((size_t)m_pageBuffer + (size_t)size);

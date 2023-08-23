@@ -196,6 +196,8 @@ public:
   bool      Read(void* p_buffer,size_t p_bufsize,int& p_read);
   bool      Write(const CString& p_string);
   bool      Write(void* p_buffer,size_t p_bufsize);
+  bool      Format(LPCTSTR p_format,...);
+  bool      FormatV(LPCTSTR p_format,va_list p_list);
   size_t    Position();
   size_t    Position(FSeek p_how,LONGLONG p_position = 0);
   bool      Flush(bool p_all = false);
@@ -228,6 +230,7 @@ public:
   void      SetEncoding(Encoding p_encoding);
 
   // GETTERS
+  bool      GetIsOpen();
   CString   GetFilename();
   HANDLE    GetFileHandle();
   DWORD     GetOpenFlags();
@@ -256,7 +259,7 @@ public:
   bool      GetIsNormal();
   bool      GetIsReadOnly();
   bool      GetIsDirectory();
-  Encoding   GetEncoding();
+  Encoding  GetEncoding();
 
   // FUNCTIONS
 
@@ -297,6 +300,9 @@ public:
   static time_t   ConvertFileTimeToTimet(FILETIME p_time);
   // Convert a time_t value to a FILETIME
   static FILETIME ConvertTimetToFileTime(time_t p_time);
+  // Translating UTF-8 / UTF-16-LE and UTF-16-BE in reading and writing
+  CString         TranslateInputBuffer(std::string& p_string);
+  std::string     TranslateOutputBuffer(const CString& p_string);
 
 private:
   // PRIVATE OPERATIONS
@@ -315,9 +321,7 @@ private:
   // Resolving UTF-8 and UTF-16 text files
   void      ScanBomInFirstPageBuffer();
   bool      WriteEncodingBOM();
-  // Translating UTF-8 / UTF-16-LE and UTF-16-BE in reading and writing
-  CString     TranslateInputBuffer(std::string& p_string);
-  std::string TranslateOutputBuffer(const CString& p_string);
+  // Convert Big-Endian (Blefuscu) to Little-Endian (Lilliput)
   void        BlefuscuToLilliput(std::string& p_gulliver);
 #ifdef UNICODE
   CString     ExplodeString(const std::string& p_string,unsigned p_codepage);
@@ -329,14 +333,14 @@ private:
   CString     m_filename;                           // Name of the file (if any)
   HANDLE      m_file         { nullptr };           // Handle to the OS file
   DWORD       m_openMode     { FFlag::no_mode };    // How the file was opened
-  Encoding     m_encoding     { Encoding::NO_BOM}; // Encoding found by BOM
+  Encoding    m_encoding     { Encoding::NO_BOM}; // Encoding found by BOM
   // Page buffer cache
   uchar*      m_pageBuffer   { nullptr };           // PB: Text mode page buffer
   uchar*      m_pagePointer  { nullptr };           // PP: Pointer in the page buffer
   uchar*      m_pageTop      { nullptr };           // PT: Pointer to the last position in the buffer
   // Current information
   int         m_error        { 0 };                 // Last encountered error (if any)
-  int         m_ungetch      { 0 };                 // Last get character with "Getch"
+  uchar       m_ungetch      { 0 };                 // Last get character with "Getch"
   // Shared Memory
   void*       m_sharedMemory { nullptr };           // Pointer in memory (if any)
   size_t      m_sharedSize   { 0 };                 // Size of shared memory segment
