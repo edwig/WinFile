@@ -371,7 +371,7 @@ void TestPerformance()
 
   measure.Reset();
   measure.Start();
-  CString secondfile2 = ReadFILE(filename2,Encoding::NO_BOM);
+  CString secondfile2 = ReadFILE(filename2,Encoding::Default);
   result2 = measure.GetCounter();
   std::tcout << _T("Reading <FILE>         : ") << result2 << std::endl;
   std::tcout << _T("Size of file 2 in ATL  : ") << secondfile2.GetLength() << std::endl;

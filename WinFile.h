@@ -27,6 +27,7 @@
 #include <windows.h>
 #include <atlstr.h>
 #include <string>
+#include "Encoding.h"
 
 // MS-Windows codepage numbers for translation of text files
 #define CODEPAGE_UTF8   65001
@@ -130,33 +131,6 @@ FMove;
 #define winfile_copy ((FCopy)(FCopy::copy_allow_decryption | FCopy::copy_allow_symlink))
 #define winfile_move ((FMove)(FMove::move_replace_existing | FMove::move_copy_allowed))
 
-// Result of the defusion process
-enum class BOMOpenResult
-{
-  NoString      // Empty input
- ,NoEncoding    // No encoding Byte-order-mark found
- ,BOM           // Byte-Order-Mark
- ,Incompatible  // Incompatible (not supported) encoding
-};
-
-// Type of BOM found to defuse
-// As found on: https://en.wikipedia.org/wiki/Byte_order_mark
-enum class Encoding
-{
-  NO_BOM       // No BOM found
- ,UTF8         // UTF 8 bits (General WEB standard)
- ,LE_UTF16     // Little-Endian UTF 16 bits (Intel & MS-Windows!)
- ,LE_UTF32     // Little-Endian UTF 32 bits
- ,BE_UTF16     // Big-Endian UTF 16 bits (Motorola & Apple MacIntosh)
- ,BE_UTF32     // Big-Endian UTF 32 bits
- ,UTF7         // UTF 7 bits (Obsolete variable length encoding)
- ,UTF1         // UTF-1 (Variable width encoding, not searchable!)
- ,UTF_EBCDIC   // IBM EBCDIC Unicode
- ,SCSU         // Standard Compression Code for Unicode
- ,BOCU_1       // Binary Ordered Compressed Unicode
- ,GB_18030     // Chinese government: Guojia Biazhun coding standard 18030
-};
-
 //////////////////////////////////////////////////////////////////////////
 //
 // THE CLASS INTERFACE
@@ -176,7 +150,7 @@ public:
   ~WinFile();
 
   // OPERATIONS ON THE FILE SYSTEM
-  bool      Open(DWORD p_flags = winfile_read,FAttributes p_attribs = FAttributes::attrib_none,Encoding p_encoding = Encoding::NO_BOM);
+  bool      Open(DWORD p_flags = winfile_read,FAttributes p_attribs = FAttributes::attrib_none,Encoding p_encoding = EncodingDefault);
   bool      Close(bool p_flush = false);
   bool      Create(FAttributes p_attribs = FAttributes::attrib_normal);
   bool      CreateDirectory();
@@ -198,7 +172,7 @@ public:
   bool      Write(void* p_buffer,size_t p_bufsize);
   bool      Format(LPCTSTR p_format,...);
   bool      FormatV(LPCTSTR p_format,va_list p_list);
-  size_t    Position();
+  size_t    Position() const;
   size_t    Position(FSeek p_how,LONGLONG p_position = 0);
   bool      Flush(bool p_all = false);
   bool      Lock  (size_t p_begin,size_t p_length);
@@ -230,13 +204,14 @@ public:
   void      SetEncoding(Encoding p_encoding);
 
   // GETTERS
-  bool      GetIsOpen();
+  bool      GetIsOpen() const;
   CString   GetFilename();
   HANDLE    GetFileHandle();
   DWORD     GetOpenFlags();
   int       GetLastError();
   CString   GetLastErrorString();
-  size_t    GetFileSize();
+  size_t    GetFileSize() const;
+  bool      GetIsAtEnd() const;
   size_t    GetSharedMemorySize();
   CString   GetNamePercentEncoded();
   CString   GetFilenamePartDirectory();
@@ -317,7 +292,7 @@ private:
   bool      PageBufferReadForeward(bool p_scanBom);
   bool      PageBufferWrite(uchar ch);
   bool      PageBufferFlush();
-  bool      PageBufferAdjust(bool p_beginning = false);
+  bool      PageBufferAdjust(bool p_beginning = false) const;
   // Resolving UTF-8 and UTF-16 text files
   void      ScanBomInFirstPageBuffer();
   bool      WriteEncodingBOM();
@@ -333,13 +308,13 @@ private:
   CString     m_filename;                           // Name of the file (if any)
   HANDLE      m_file         { nullptr };           // Handle to the OS file
   DWORD       m_openMode     { FFlag::no_mode };    // How the file was opened
-  Encoding    m_encoding     { Encoding::NO_BOM}; // Encoding found by BOM
+  Encoding    m_encoding     { Encoding::Default}; // Encoding found by BOM
   // Page buffer cache
   uchar*      m_pageBuffer   { nullptr };           // PB: Text mode page buffer
   uchar*      m_pagePointer  { nullptr };           // PP: Pointer in the page buffer
   uchar*      m_pageTop      { nullptr };           // PT: Pointer to the last position in the buffer
   // Current information
-  int         m_error        { 0 };                 // Last encountered error (if any)
+  mutable int m_error        { 0 };                 // Last encountered error (if any)
   uchar       m_ungetch      { 0 };                 // Last get character with "Getch"
   // Shared Memory
   void*       m_sharedMemory { nullptr };           // Pointer in memory (if any)

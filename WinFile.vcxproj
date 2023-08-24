@@ -302,6 +302,7 @@
     <ClCompile Include="WinFile.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Encoding.h" />
     <ClInclude Include="HPFCounter.h" />
     <ClInclude Include="WinFile.h" />
   </ItemGroup>

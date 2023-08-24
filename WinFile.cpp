@@ -24,7 +24,6 @@
 // THE SOFTWARE.
 //
 #include "WinFile.h"
-#include <iostream>
 #include <fileapi.h>
 #include <handleapi.h>
 #include <shlwapi.h>
@@ -34,7 +33,6 @@
 #include <shellapi.h>
 #include <AclAPI.h>
 #include <filesystem>
-#include <algorithm>
 #include <io.h>
 
 // #ifdef _DEBUG
@@ -97,7 +95,7 @@ WinFile::~WinFile()
 bool
 WinFile::Open(DWORD       p_flags    /*= winfile_read             */
              ,FAttributes p_attribs  /*= FAttributes::attrib_none */
-             ,Encoding    p_encoding /*= Encoding::NO_BOM         */)
+             ,Encoding    p_encoding /*= EncodingDefault          */)
 {
   bool result = false;
   bool append = false;
@@ -158,7 +156,7 @@ WinFile::Open(DWORD       p_flags    /*= winfile_read             */
   attrib |= p_attribs;
 
   // Getting the encoding
-  if(p_encoding != Encoding::NO_BOM)
+  if(p_encoding != Encoding::Default)
   {
     m_encoding = p_encoding;
   }
@@ -189,7 +187,7 @@ WinFile::Open(DWORD       p_flags    /*= winfile_read             */
         return result;
       }
     }
-    else if((p_flags & FFlag::open_write) && (m_encoding > Encoding::NO_BOM))
+    else if((p_flags & FFlag::open_write) && (m_encoding > Encoding::Default))
     {
       WriteEncodingBOM();
     }
@@ -800,8 +798,8 @@ WinFile::Read(CString& p_string)
     if(ch == (uchar)EOF)
     {
       m_error = ::GetLastError();
-      p_string = result.c_str();
-      return false;
+      p_string = TranslateInputBuffer(result);
+      return p_string.GetLength() ? true : false;
     }
     result += ch;
 
@@ -856,6 +854,10 @@ WinFile::Read(CString& p_string)
 CString 
 WinFile::TranslateInputBuffer(std::string& p_string)
 {
+  if(p_string.empty())
+  {
+    return _T("");
+  }
 #ifdef UNICODE
   if(m_encoding == Encoding::UTF8)
   {
@@ -915,13 +917,22 @@ WinFile::TranslateInputBuffer(std::string& p_string)
     // Implode to MBCS
     CString result;
     int clength = 0;
+    int blength = 0;
+    // Zero delimit the input string for sure!
+    p_string += '0';
+    p_string += '0';
+
+    // Size in UTF16 character code points
+    clength = (int)p_string.size() / 2;
+
     // Getting the needed length for MBCS
-    clength = ::WideCharToMultiByte(GetACP(),0,(LPCWSTR) p_string.c_str(),-1,NULL,NULL,NULL,NULL);
-    LPTSTR buffer = result.GetBufferSetLength(clength);
+    blength = ::WideCharToMultiByte(GetACP(),WC_COMPOSITECHECK,(LPCWSTR)p_string.c_str(),clength,NULL,NULL,NULL,NULL);
+    char* buffer = new char[blength + 1];
     // Doing the conversion from UTF-16 to MBCS
-    clength = ::WideCharToMultiByte(GetACP(),0,(LPCWSTR) p_string.c_str(),-1,reinterpret_cast<LPSTR>(buffer),clength,NULL,NULL);
-    buffer[clength] = 0;
-    result.ReleaseBufferSetLength(clength);
+    blength = WideCharToMultiByte(GetACP(),WC_COMPOSITECHECK,(LPCWSTR)p_string.c_str(),clength,buffer,blength,NULL,NULL);
+    buffer[blength - 1] = 0;
+    result = buffer;
+    delete[] buffer;
     return result;
   }
   // Last resort, create CString (like we've always done before)
@@ -1030,6 +1041,10 @@ WinFile::Write(const CString& p_string)
 std::string 
 WinFile::TranslateOutputBuffer(const CString& p_string)
 {
+  if(p_string.IsEmpty())
+  {
+    return "";
+  }
   std::string result;
 
 #ifdef UNICODE
@@ -1048,7 +1063,7 @@ WinFile::TranslateOutputBuffer(const CString& p_string)
   {
     BlefuscuToLilliput(result);
   }
-  else if(m_encoding == Encoding::NO_BOM)
+  else if(m_encoding == Encoding::Default)
   {
     // Simply implode the string to MBCS
     result = ImplodeString(p_string,GetACP());
@@ -1094,7 +1109,7 @@ WinFile::TranslateOutputBuffer(const CString& p_string)
   {
     BlefuscuToLilliput(result);
   }
-  if(m_encoding == Encoding::NO_BOM)
+  if(m_encoding == Encoding::Default)
   {
     // Simply the string
     result = p_string.GetString();
@@ -1166,7 +1181,7 @@ WinFile::FormatV(LPCTSTR p_format,va_list p_list)
 // Getting the current file position
 // Returns the file position, or -1 for error
 size_t
-WinFile::Position()
+WinFile::Position() const
 {
   // Reset the error
   m_error = 0;
@@ -1548,7 +1563,7 @@ WinFile::WriteEncodingBOM()
 {
   switch(m_encoding)
   {
-    case Encoding::NO_BOM:  break;
+    case Encoding::Default:  break;
     case Encoding::UTF8:    Putch(0xEF);
                               Putch(0xBB);
                               Putch(0xBF);
@@ -1580,11 +1595,11 @@ WinFile::WriteEncodingBOM()
 // and the number of bytes to skip in your input
 BOMOpenResult 
 WinFile::DefuseBOM(const uchar*  p_pointer
-                  ,Encoding&      p_type
+                  ,Encoding&     p_type
                   ,unsigned int& p_skip)
 {
   // Preset nothing
-  p_type = Encoding::NO_BOM;
+  p_type = Encoding::Default;
   p_skip = 0;
 
   // Get first four characters in the message as integers
@@ -1627,6 +1642,11 @@ WinFile::DefuseBOM(const uchar*  p_pointer
     p_skip = 4;
     p_type = Encoding::BE_UTF32;
     return BOMOpenResult::Incompatible;
+  }
+  // After BE32 check. The buffer is most likely empty
+  if(c1 == 0)
+  {
+    return BOMOpenResult::NoString;
   }
   // Check for UTF-7 special case
   if(c1 == 0x2B && c2 == 0x2F && c3 == 0x76)
@@ -2012,7 +2032,7 @@ WinFile::ConvertTimetToFileTime(time_t p_time)
 
 // Are we open?
 bool
-WinFile::GetIsOpen()
+WinFile::GetIsOpen() const
 {
   return m_file != nullptr;
 }
@@ -2111,7 +2131,7 @@ WinFile::GetLastErrorString()
 
 // Getting the size of the file or INVALID_FILE_SIZE
 size_t
-WinFile::GetFileSize()
+WinFile::GetFileSize() const
 {
   // Reset the error
   m_error = 0;
@@ -2147,6 +2167,45 @@ WinFile::GetFileSize()
     m_error = ERROR_INVALID_FUNCTION;
   }
   return INVALID_FILE_SIZE;
+}
+
+// See if we are positioned at the end of the file
+bool
+WinFile::GetIsAtEnd() const
+{
+  // File is not opened, so NO
+  if(!m_file)
+  {
+    return false;
+  }
+
+  // Getting the file size
+  size_t size = GetFileSize();
+  size_t cpos = Position();
+  
+  // See if something went wrong
+  if(size == (size_t)-1 || cpos == (size_t)-1)
+  {
+    return false;
+  }
+
+  // Not at the end, so NO
+  if(size != cpos)
+  {
+    return false;
+  }
+
+  // Could, be but maybe not at the end of the pagebuffer
+  if(m_pageBuffer)
+  {
+    if(m_pagePointer != m_pageTop)
+    {
+      // Not yet read tot the end of the last buffer
+      return false;
+    }
+  }
+  // At the end of the file AND at the end of the last buffer
+  return true;
 }
 
 // If we have a memory segment, return the recorded size
@@ -3136,7 +3195,7 @@ WinFile::PageBufferFlush()
 // To gain the user's perspective, we set the file pointer back to the position
 // the program has been reading to
 bool
-WinFile::PageBufferAdjust(bool p_beginning /*= false*/)
+WinFile::PageBufferAdjust(bool p_beginning /*= false*/) const
 {
   // Check if we have a page buffer
   if(!m_pageBuffer)

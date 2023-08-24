@@ -32,6 +32,9 @@
     <ClInclude Include="WinFile.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Encoding.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="Readme.md">
