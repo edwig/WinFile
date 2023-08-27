@@ -286,7 +286,6 @@ ReadIFSTREAMStrings(CString p_filename)
 {
   std::tstring result;
   std::tstring line;
-  bool p_first = true;
 
   tifstream file(p_filename);
   if (file.is_open())
@@ -316,8 +315,6 @@ TestDifference(CString p_string1,CString p_string2)
   {
     std::tcout << _T("Strings are of equal length: ") << len1 << std::endl;
   }
-  int shortest = len1 < len2 ? len1 : len2;
-
   for(int index = 0; index < len1; ++index)
   {
     if(p_string1.GetAt(index) != p_string2.GetAt(index))
@@ -846,6 +843,6 @@ int main()
   // Wait for user approval
   std::tcout << std::endl;
   std::tcout << _T("Ready testing: ");
-  int throwaway = _getch();
+  _getch();
   std::tcout << _T("OK") << std::endl;
 }

@@ -155,8 +155,10 @@ WinFile::Open(DWORD       p_flags    /*= winfile_read             */
   attrib |= (p_flags & FFlag::open_sequential)    ? FILE_FLAG_SEQUENTIAL_SCAN : 0;
   attrib |= p_attribs;
 
-  // Getting the encoding
-  if(p_encoding != Encoding::Default)
+  // Getting the encoding in case of a text file
+  if((p_flags & open_write)      &&
+     (p_flags & open_trans_text) && 
+     (p_encoding != EncodingDefault))
   {
     m_encoding = p_encoding;
   }
@@ -644,7 +646,7 @@ WinFile::OpenAsSharedMemory(CString  p_name
     // File is now opened: try to create a file mapping
     DWORD protect  = PAGE_READWRITE;
     DWORD sizeLow  = p_size & 0x0FFFFFFF;
-    DWORD sizeHigh = p_size >> 32;
+    DWORD sizeHigh = ((unsigned __int64) p_size) >> 32;
     m_file = CreateFileMapping(m_file,nullptr,protect,sizeLow,sizeHigh,p_name.GetString());
     if(m_file == NULL)
     {
@@ -772,6 +774,7 @@ WinFile::Read(CString& p_string)
 {
   std::string result;
   bool unicodeSkip(false);
+  uchar last(0);
 
   // Reset the error
   m_error = 0;
@@ -794,7 +797,7 @@ WinFile::Read(CString& p_string)
 
   while(true)
   {
-    uchar ch = PageBufferRead();
+    uchar ch(PageBufferRead());
     if(ch == (uchar)EOF)
     {
       m_error = ::GetLastError();
@@ -813,38 +816,58 @@ WinFile::Read(CString& p_string)
       }
       if(ch == '\r')
       {
+        uchar ext;
         crstate = true;
-        if(m_encoding == Encoding::LE_UTF16)
+        switch(m_encoding)
         {
-          result += PageBufferRead();
+          case Encoding::LE_UTF16:  ext = PageBufferRead();
+                                    result += ext;
+                                    if(ext)
+                                    {
+                                      crstate = false;
+                                    }
+                                    break;
+          case Encoding::BE_UTF16:  if(result[result.size() - 2])
+                                    {
+                                      crstate = false;
+                                    }
+                                    break;
+          case Encoding::UTF8:      last = 0; 
+                                    [[fallthrough]];
+          default:                  break;
+
         }
         continue;
       }
-      if(ch == '\n' && m_encoding == Encoding::LE_UTF16)
+    }
+    if(ch == '\n' && m_encoding == Encoding::LE_UTF16)
+    {
+      // Read in trailing zero for a newline in this encoding
+      result += (last = PageBufferRead());
+    }
+    if(crstate && ch == '\n' && !last)
+    {
+      if(unicodeSkip)
       {
-        // Read in trailing zero for a newline in this encoding
-        result += PageBufferRead();
+        result[result.size() - 4] = result[result.size() - 2];
+        result[result.size() - 3] = result[result.size() - 1];
       }
-      if(crstate && ch == '\n')
+      else
       {
-        if(unicodeSkip)
-        {
-          result[result.size() - 4] = result[result.size() - 2];
-          result[result.size() - 3] = result[result.size() - 1];
-        }
-        else
-        {
-          result[result.size() - 2] = ch;
-        }
-        result.erase(result.size() - 1 - (unicodeSkip ? 1 : 0));
-        crstate = false;
+        result[result.size() - 2] = ch;
       }
+      result.erase(result.size() - 1 - (unicodeSkip ? 1 : 0));
+      crstate = false;
     }
 
     // See if we are ready reading the string
-    if(ch == '\n')
+    if(ch == '\n' && !last)
     {
       break;
+    }
+    if(unicodeSkip)
+    {
+      last = ch;
     }
   }
   p_string = TranslateInputBuffer(result);
@@ -889,10 +912,10 @@ WinFile::TranslateInputBuffer(std::string& p_string)
     // Convert UTF-8 -> UTF-16 -> MBCS
     int   clength = 0;
     // Getting the needed buffer length (in code points)
-    clength = MultiByteToWideChar(CODEPAGE_UTF8,MB_PRECOMPOSED,p_string.c_str(),-1,NULL,NULL);
+    clength = MultiByteToWideChar(CODEPAGE_UTF8,0,p_string.c_str(),-1,NULL,NULL);
     uchar* buffer = new uchar[clength * 2];
     // Doing the 'real' conversion
-    clength = MultiByteToWideChar(CODEPAGE_UTF8,MB_PRECOMPOSED,p_string.c_str(),-1,reinterpret_cast<LPWSTR>(buffer),clength);
+    clength = MultiByteToWideChar(CODEPAGE_UTF8,0,p_string.c_str(),-1,reinterpret_cast<LPWSTR>(buffer),clength);
 
     // Getting the needed length for MBCS
     clength = ::WideCharToMultiByte(GetACP(),0,(LPCWSTR) buffer,-1,NULL,NULL,NULL,NULL);
@@ -1016,16 +1039,21 @@ WinFile::Write(const CString& p_string)
     uchar ch = string[index];
     if(doText && ch == '\n')
     {
-      if(!PageBufferWrite('\r'))
+      if(!(m_encoding == Encoding::LE_UTF16 && string[index + 1]) &&
+         !(m_encoding == Encoding::BE_UTF16 && string[index - 1]))
       {
-        break;
-      }
-      if(m_encoding == Encoding::BE_UTF16 ||
-         m_encoding == Encoding::LE_UTF16 )
-      {
-        if(!PageBufferWrite(0))
+
+        if(!PageBufferWrite('\r'))
         {
           break;
+        }
+        if(m_encoding == Encoding::BE_UTF16 ||
+           m_encoding == Encoding::LE_UTF16)
+        {
+          if(!PageBufferWrite(0))
+          {
+            break;
+          }
         }
       }
     }
@@ -1564,28 +1592,28 @@ WinFile::WriteEncodingBOM()
   switch(m_encoding)
   {
     case Encoding::Default:  break;
-    case Encoding::UTF8:    Putch(0xEF);
-                              Putch(0xBB);
-                              Putch(0xBF);
-                              break;
-    case Encoding::LE_UTF16:Putch(0xFF);
-                              Putch(0xFE);
-                              break;
-    case Encoding::BE_UTF16:Putch(0xFE);
-                              Putch(0xFF);
-                              break;
-    case Encoding::BE_UTF32:Putch(0);
-                              Putch(0);
-                              Putch(0xFE);
-                              Putch(0xFF);
-                              break;
-    case Encoding::LE_UTF32:Putch(0xFF);
-                              Putch(0xFE);
-                              Putch(0);
-                              Putch(0);
-                              break;
+    case Encoding::UTF8:     Putch(0xEF);
+                             Putch(0xBB);
+                             Putch(0xBF);
+                             break;
+    case Encoding::LE_UTF16: Putch(0xFF);
+                             Putch(0xFE);
+                             break;
+    case Encoding::BE_UTF16: Putch(0xFE);
+                             Putch(0xFF);
+                             break;
+    case Encoding::BE_UTF32: Putch(0);
+                             Putch(0);
+                             Putch(0xFE);
+                             Putch(0xFF);
+                             break;
+    case Encoding::LE_UTF32: Putch(0xFF);
+                             Putch(0xFE);
+                             Putch(0);
+                             Putch(0);
+                             break;
     // Incompatible encodings on MS-Windows
-    default:                  return false;
+    default:                 return false;
   }
   return true;
 }
@@ -1595,7 +1623,7 @@ WinFile::WriteEncodingBOM()
 // and the number of bytes to skip in your input
 BOMOpenResult 
 WinFile::DefuseBOM(const uchar*  p_pointer
-                  ,Encoding&     p_type
+                  ,Encoding&      p_type
                   ,unsigned int& p_skip)
 {
   // Preset nothing
@@ -2730,7 +2758,7 @@ WinFile::LegalDirectoryName(CString p_name,bool p_extensionAllowed /*= true*/)
     }
     // No extension allowed after a reserved name (e.g. "LPT3.txt")
     int pos = upper.Find(reserved[index]);
-    if(pos == 0 && name.GetLength() > _tcslen(reserved[index]))
+    if(pos == 0 && name.GetLength() > (int)_tcslen(reserved[index]))
     {
       pos += (int)_tcslen(reserved[index]);
       if(name[pos] == '.')
@@ -2942,10 +2970,10 @@ WinFile::ExplodeString(const std::string& p_string,unsigned p_codepage)
   // Convert UTF-8 -> UTF-16
   // Convert MBCD  -> UTF-16
   // Getting the needed buffer space (in codepoints! Not bytes!!)
-  int length = MultiByteToWideChar(p_codepage,MB_PRECOMPOSED,p_string.c_str(),-1,NULL,NULL);
+  int length = MultiByteToWideChar(p_codepage,0,p_string.c_str(),-1,NULL,NULL);
   uchar* buffer = new uchar[length * 2];
   // Doing the 'real' conversion
-  MultiByteToWideChar(p_codepage,MB_PRECOMPOSED,p_string.c_str(),-1,reinterpret_cast<LPWSTR>(buffer),length);
+  MultiByteToWideChar(p_codepage,0,p_string.c_str(),-1,reinterpret_cast<LPWSTR>(buffer),length);
   CString result;
   LPCTSTR resbuf = result.GetBufferSetLength(length);
   memcpy((void*) resbuf,buffer,length * 2);
@@ -2958,11 +2986,16 @@ std::string
 WinFile::ImplodeString(const CString& p_string,unsigned p_codepage)
 {
   int clength = 0;
+  int blength = 0;
   // Getting the length of the translation buffer first
   clength = ::WideCharToMultiByte(p_codepage,0,(LPCWSTR) p_string.GetString(),-1,NULL,0,NULL,NULL);
   char* buffer = new char[clength + 1];
-  clength = ::WideCharToMultiByte(p_codepage,0,(LPCWSTR) p_string.GetString(),clength,(LPSTR) buffer,clength,NULL,NULL);
+  blength = ::WideCharToMultiByte(p_codepage,0,(LPCWSTR) p_string.GetString(),clength,(LPSTR) buffer,clength,NULL,NULL);
   buffer[clength] = 0;
+  if(blength > 0 && blength < clength)
+  {
+    buffer[blength] = 0;
+  }
   std::string result(buffer);
   delete[] buffer;
   return result;
