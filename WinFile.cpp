@@ -2207,23 +2207,8 @@ WinFile::GetIsAtEnd() const
     return false;
   }
 
-  // Getting the file size
-  size_t size = GetFileSize();
-  size_t cpos = Position();
-  
-  // See if something went wrong
-  if(size == (size_t)-1 || cpos == (size_t)-1)
-  {
-    return false;
-  }
-
-  // Not at the end, so NO
-  if(size != cpos)
-  {
-    return false;
-  }
-
-  // Could, be but maybe not at the end of the pagebuffer
+  // In case we are reading a buffered tekstfile
+  // and we are not yet at the end of the current page buffer
   if(m_pageBuffer)
   {
     if(m_pagePointer != m_pageTop)
@@ -2232,6 +2217,33 @@ WinFile::GetIsAtEnd() const
       return false;
     }
   }
+
+  // Getting the 'real' file size
+  size_t size = GetFileSize();
+
+  // Getting the file position while reading pages, or reading binaries
+  // Zero bytes removed from the current position, gets the position
+  LARGE_INTEGER move = {0, 0};
+  LARGE_INTEGER pos  = {0, 0};
+  if(::SetFilePointerEx(m_file,move,&pos,FILE_CURRENT) == 0)
+  {
+    m_error = ::GetLastError();
+    return true;
+  }
+  size_t cpos = pos.QuadPart;
+
+  // See if something went wrong
+  if(size == (size_t)-1 || cpos == (size_t)-1)
+  {
+    return true;
+  }
+
+  // Not at the end, so NO
+  if(cpos < size)
+  {
+    return false;
+  }
+
   // At the end of the file AND at the end of the last buffer
   return true;
 }
