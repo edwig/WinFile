@@ -307,7 +307,7 @@ WinFile::CreateDirectory()
   CString part = GetBaseDirectory(path);
   while(!part.IsEmpty())
   {
-    dirToBeOpened += "\\" + part;
+    dirToBeOpened += _T("\\") + part;
     if (!::CreateDirectory(dirToBeOpened.GetString(),nullptr))
     {
       m_error = ::GetLastError();
@@ -626,7 +626,7 @@ WinFile::OpenAsSharedMemory(CString  p_name
   }
 
   // Extend the name for RDP sessions
-  p_name = (p_local ? "Local\\" : "Global\\") + p_name;
+  p_name = (p_local ? _T("Local\\") : _T("Global\\")) + p_name;
 
   // DO either a create of, or an open of an existing memory segment
   if(p_trycreate)
@@ -1071,7 +1071,7 @@ WinFile::TranslateOutputBuffer(const CString& p_string)
 {
   if(p_string.IsEmpty())
   {
-    return "";
+    return std::string();
   }
   std::string result;
 
@@ -1809,7 +1809,7 @@ WinFile::SetFilenameInFolder(int p_folder,CString p_filename)
   }
   pShellMalloc->Release();
 
-  m_filename = special + CString("\\") + p_filename;
+  m_filename = special + CString(_T("\\")) + p_filename;
   return result;
 }
 
