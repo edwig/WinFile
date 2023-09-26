@@ -1,27 +1,30 @@
-// WinFile.cpp : This file contains the 'main' function. Program execution begins and ends there.
+// WinFile.cpp : Testbed for the WinFile class.
 //
-#include "WinFile.h"
-#include "HPFCounter.h"
 #include <stdio.h>
 #include <iostream>
 #include <fstream>
 #include <conio.h>
 #include <time.h>
 #include <shlobj.h>
-#include <atlstr.h>
-#include <atlconv.h>
-#include <string>
 #include <vector>
+#include "WinFile.h"
+#include "HPFCounter.h"
 
 #ifdef UNICODE
 using std::wifstream;
+using std::wofstream;
 #define tcout     wcout
+#define tcin      wcin
 #define tifstream wifstream
+#define tofstream wofstream
 #define tstring   wstring
 #else
 using std::ifstream;
+using std::ofstream;
 #define tcout     cout
+#define tcin      cin
 #define tifstream ifstream
+#define tofstream ofstream
 #define tstring   string
 #endif
 
@@ -235,6 +238,13 @@ ReadFILE(CString p_filename,Encoding p_encoding)
       result += (char) ch;
     }
     fclose(file);
+  }
+  Encoding p_type(Encoding::Default);
+  unsigned skip = 0;
+  WinFile::DefuseBOM((const uchar*) result.c_str(),p_type,skip);
+  if(skip)
+  {
+    result = std::string(result.c_str() + skip);
   }
   return TranslateBuffer(result,p_encoding);
 }
@@ -784,6 +794,7 @@ void TestUnicode()
   }
 
   std::tcout << _T("All testfiles written") << std::endl;
+  std::tcout << std::endl;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -814,6 +825,68 @@ void TestValidNames()
 
 //////////////////////////////////////////////////////////////////////////
 //
+// Valid directory/file names
+//
+//////////////////////////////////////////////////////////////////////////
+
+void TestStreamingMode()
+{
+  std::tcout << _T("TESTING STREAMING TO/FROM WinFile") << std::endl;
+
+  WinFile file;
+  file.CreateTempFileName(_T("STR"));
+  std::tcout << _T("Filename is: ") << file.GetFilename().GetString() << std::endl;
+
+  file.Open(winfile_write | open_trans_binary);
+  if(!file.GetIsOpen())
+  {
+    std::tcout << _T("ALARM: File could not be opened!") << std::endl;
+    return;
+  }
+  __int64 total1 = 0;
+  __int64 total2 = 0;
+  int num;
+  
+  for(int x = 1;x <= 100000; ++x)
+  {
+    total1 += x;
+    file << x;
+    if(file.GetLastError())
+    {
+      break;
+    }
+  }
+  file.Close();
+
+  file.Open(winfile_read | open_trans_binary);
+  if(file.GetIsOpen())
+  {
+    for(int x = 1;x <= 100000; ++x)
+    {
+      file >> num;
+      total2 += num;
+      if(file.GetLastError())
+      {
+        break;
+      }
+    }
+    file.Close();
+  }
+  if(total1 != total2)
+  {
+    std::tcout << _T("ALARM: File Not read as written!") << std::endl;
+    return;
+  }
+  else
+  {
+    std::tcout << _T("Stream mode ok. Check sum: ") << total1 << std::endl;
+  }
+  file.DeleteToTrashcan();
+  std::tcout << std::endl;
+}
+
+//////////////////////////////////////////////////////////////////////////
+//
 // MAIN DRIVER
 //
 //////////////////////////////////////////////////////////////////////////
@@ -823,26 +896,31 @@ int main()
   std::tcout << _T("Hello World, we are testing WinFile\n");
   std::tcout << _T("===================================\n");
 
-//   // Testing valid names
-//   TestValidNames();
-//   // Basic string write/re-read test
-//   TestReadingWriting();
-//   // Now do a performance test
-//   TestPerformance();
-//   // Test random-access read-write
-//   TestRandomAccess();
-//   // Test creating a temporary file
-//   TestTemporaryFile();
-//   // Testing filetime function
-//   TestGetFiletimes();
-//   // Testing special folders
-//   TestSpecialFolder();
+  // Testing valid names
+  TestValidNames();
+  // Basic string write/re-read test
+  TestReadingWriting();
+  // Now do a performance test
+  TestPerformance();
+  // Test random-access read-write
+  TestRandomAccess();
+  // Test creating a temporary file
+  TestTemporaryFile();
+  // Testing filetime function
+  TestGetFiletimes();
+  // Testing special folders
+  TestSpecialFolder();
   // Testing the Unicode translations
   TestUnicode();
+
+  // Test WinFile streaming mode
+  TestStreamingMode();
 
   // Wait for user approval
   std::tcout << std::endl;
   std::tcout << _T("Ready testing: ");
+
   _getch();
+
   std::tcout << _T("OK") << std::endl;
 }

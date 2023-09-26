@@ -268,6 +268,31 @@ public:
   bool     operator!=(const WinFile& p_other);
   WinFile& operator= (const WinFile& p_other);
 
+  // STREAMING OPERATORS
+
+  WinFile& operator<<(const TCHAR    p_char);
+  WinFile& operator<<(const short    p_num);
+  WinFile& operator<<(const int      p_num);
+  WinFile& operator<<(const unsigned p_num);
+  WinFile& operator<<(const INT64    p_num);
+  WinFile& operator<<(const float    p_num);
+  WinFile& operator<<(const double   p_num);
+  WinFile& operator<<(const LPCTSTR  p_string);
+  WinFile& operator<<(const CString& p_string);
+
+  WinFile& operator>>(TCHAR&    p_char);
+  WinFile& operator>>(short&    p_num);
+  WinFile& operator>>(int&      p_num);
+  WinFile& operator>>(unsigned& p_num);
+  WinFile& operator>>(INT64&    p_num);
+  WinFile& operator>>(float&    p_num);
+  WinFile& operator>>(double&   p_num);
+  WinFile& operator>>(CString&  p_string);
+
+  // Handy for streaming an end-of-line as output
+  // Does *NOT* do a flush as std::endl does!!
+  static const TCHAR endl { '\n' };
+
   // Not thread safe: Must be set for the total process!
   // And can only be set in multiples of 4K up to 1024K
   static bool     SetBufferPageSize(DWORD p_pageSize);
@@ -308,7 +333,7 @@ private:
   CString     m_filename;                           // Name of the file (if any)
   HANDLE      m_file         { nullptr };           // Handle to the OS file
   DWORD       m_openMode     { FFlag::no_mode };    // How the file was opened
-  Encoding    m_encoding     { Encoding::Default}; // Encoding found by BOM
+  Encoding    m_encoding     { Encoding::Default};  // Encoding found by BOM
   // Page buffer cache
   uchar*      m_pageBuffer   { nullptr };           // PB: Text mode page buffer
   uchar*      m_pagePointer  { nullptr };           // PP: Pointer in the page buffer
