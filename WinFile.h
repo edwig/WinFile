@@ -166,7 +166,7 @@ public:
   void      ForgetFile(); // BEWARE!
 
   // OPERATIONS TO READ AND WRITE CONTENT
-  bool      Read(CString& p_string);
+  bool      Read(CString& p_string,uchar p_delim = '\n');
   bool      Read(void* p_buffer,size_t p_bufsize,int& p_read);
   bool      Write(const CString& p_string);
   bool      Write(void* p_buffer,size_t p_bufsize);
@@ -261,6 +261,10 @@ public:
                               ,bool     p_trycreate = false   // Create with m_filename if not exists
                               ,size_t   p_size      = 0);     // Size of memory if we create it
   CString   LegalDirectoryName(CString  p_name,bool p_extensionAllowed = true);
+  // Reduce file path name for RE-BASE of directories, removing \..\ parts
+  CString  ReduceDirectoryPath(CString& path);
+  // Makes a relative pathname from an absolute one
+  bool     MakeRelativePathname(const CString& p_base,const CString& p_absolute,CString& p_relative);
 
   // OPERATORS
 
@@ -309,6 +313,7 @@ private:
   void      FilenameParts(CString p_fullpath,CString& p_drive,CString& p_directory,CString& p_filename,CString& p_extension);
   CString   StripFileProtocol  (CString  p_fileref);
   int       ResolveSpecialChars(CString& p_value);
+  int       EncodeSpecialChars (CString& p_value);
   CString   GetBaseDirectory   (CString& p_path);
   // Page buffer cache functions
   uchar*    PageBuffer();
@@ -344,6 +349,8 @@ private:
   // Shared Memory
   void*       m_sharedMemory { nullptr };           // Pointer in memory (if any)
   size_t      m_sharedSize   { 0 };                 // Size of shared memory segment
+  // One thread at the time!
+  mutable CRITICAL_SECTION m_fileaccess;
 };
 
 //////////////////////////////////////////////////////////////////////////

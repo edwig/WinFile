@@ -297,11 +297,13 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="AutoCritical.cpp" />
     <ClCompile Include="HPFCounter.cpp" />
     <ClCompile Include="Main.cpp" />
     <ClCompile Include="WinFile.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="AutoCritical.h" />
     <ClInclude Include="Encoding.h" />
     <ClInclude Include="HPFCounter.h" />
     <ClInclude Include="WinFile.h" />
